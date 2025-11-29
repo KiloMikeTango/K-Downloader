@@ -1,0 +1,36 @@
+name: video_downloader
+description: "Flutter video downloader"
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  
+  chewie: ^1.13.0
+  dio: ^5.9.0
+  flutter:
+    sdk: flutter
+ 
+  flutter_riverpod: ^3.0.3
+  http: ^1.6.0
+  path_provider: ^2.1.5
+  sqflite: ^2.4.2
+  url_launcher: ^6.3.2
+  youtube_explode_dart: ^3.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+  
+
+flutter:
+  uses-material-design: true
+  assets: 
+   - assets/.
+
+     
+

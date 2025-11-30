@@ -90,6 +90,24 @@ class _HomePageState extends ConsumerState<HomePage> {
     super.dispose();
   }
 
+  String _cleanYoutubeUrl(String url) {
+    // We only clean the URL if it's a YouTube link
+    if (!(url.contains('youtu.be') || url.contains('youtube.com'))) {
+      return url;
+    }
+
+    // Find the index of the first '?'
+    final queryIndex = url.indexOf('?');
+
+    // If '?' is found, return the substring up to that point.
+    if (queryIndex != -1) {
+      return url.substring(0, queryIndex);
+    }
+
+    // If no '?' is found, return the original URL
+    return url;
+  }
+
   Future<void> _loadSavedChatId() async {
     final savedId = await ref.read(databaseServiceProvider).getChatId();
     if (savedId != null && savedId.isNotEmpty) {
@@ -133,6 +151,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     final linkType = _getLinkType(url);
     if (linkType == 'invalid') {
       ref.read(messageProvider.notifier).state = 'လင့်မထည့်ရသေးပါ။';
+      //
       return;
     }
 
@@ -149,7 +168,9 @@ class _HomePageState extends ConsumerState<HomePage> {
       }
 
       if (linkType == 'youtube') {
-        tempFilePath = await service.downloadVideo(url);
+        // 💡 USE THE CLEANED URL HERE
+        final cleanUrl = _cleanYoutubeUrl(url);
+        tempFilePath = await service.downloadVideo(cleanUrl);
       } else if (linkType == 'facebook') {
         tempFilePath = await service.downloadFacebookVideo(url);
       } else if (linkType == 'tiktok') {
@@ -250,7 +271,21 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
             ),
             onChanged: (value) {
-              ref.read(urlProvider.notifier).state = value;
+              // 1. Clean the incoming URL value
+              final cleanedValue = _cleanYoutubeUrl(value);
+
+              // 2. Check if the value was actually cleaned (i.e., if ? was removed)
+              if (cleanedValue != value) {
+                // If the URL was modified, manually update the controller's text
+                // and position the cursor at the end.
+                _urlController.text = cleanedValue;
+                _urlController.selection = TextSelection.fromPosition(
+                  TextPosition(offset: cleanedValue.length),
+                );
+              }
+
+              // 3. Update the Riverpod state with the cleaned value
+              ref.read(urlProvider.notifier).state = cleanedValue;
             },
           ),
           SizedBox(height: _responsivePadding(context, 18)),
@@ -470,6 +505,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   // --- Build method with responsive layout switching ---
   @override
   Widget build(BuildContext context) {
+    final iWidth = MediaQuery.of(context).size.width;
+    final iHeight = MediaQuery.of(context).size.height;
+
     final currentUrl = ref.watch(urlProvider);
 
     // sync the url controller text only when provider changes externally (avoid wiping user's typing)
@@ -564,6 +602,14 @@ class _HomePageState extends ConsumerState<HomePage> {
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          // Text(
+                          //   "width: $iWidth",
+                          //   style: TextStyle(color: Colors.white),
+                          // ),
+                          // Text(
+                          //   "height: $iHeight",
+                          //   style: TextStyle(color: Colors.white),
+                          // ),
                           Icon(
                             Icons.upload_file,
                             size: 72 * scale,

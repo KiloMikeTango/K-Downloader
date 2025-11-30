@@ -9,6 +9,28 @@ class DownloadService {
   final Dio _dio = Dio();
   final YoutubeExplode _yt = YoutubeExplode();
 
+  // ⭐️ NEW HELPER: Robust Filename Sanitization for all OSs
+  String _sanitizeTitle(String title) {
+    // 1. Define all characters illegal in Windows/Unix filenames:
+    // < > : " / \ | ? *
+    // We combine these with general non-alphanumeric characters.
+    // We also remove trailing periods (.\.+$) as these can cause issues on Windows.
+    final illegalCharsRegex = RegExp(r'[<>:"/\\|?*]|\.$');
+
+    // Replace all illegal characters with an underscore
+    String safeTitle = title.replaceAll(illegalCharsRegex, '_');
+
+    // Optional: Replace sequences of illegal characters (now underscores) with a single underscore.
+    safeTitle = safeTitle.replaceAll(RegExp(r'__+'), '_').trim().replaceAll(RegExp(r'^_+|_+$'), '');
+
+    // Ensure the title isn't empty after cleaning
+    if (safeTitle.isEmpty) {
+      return 'Video_Download';
+    }
+
+    return safeTitle;
+  }
+
   // --- Helper: Core HTTP Download to File (No Change) ---
   Future<String> _httpDownloadToFile(String directUrl, String fileName) async {
     final dir = await getTemporaryDirectory();
@@ -29,7 +51,7 @@ class DownloadService {
     return filePath;
   }
 
-  // --- Facebook API Logic (Web Scraping) ---
+  // --- Facebook API Logic (Web Scraping) (No Change) ---
   Future<Map<String, String>> _getFacebookDownloadUrl(String videoUrl) async {
     try {
       // 1. **Perform the direct Facebook request** (Using http client)
@@ -128,7 +150,7 @@ class DownloadService {
     }
   }
 
-  // --- 1. YOUTUBE DOWNLOAD (No Change) ---
+  // --- 1. YOUTUBE DOWNLOAD (FIXED Sanitization) ---
 
   Future<String> downloadVideo(String url) async {
     final videoId = VideoId(url);
@@ -140,8 +162,9 @@ class DownloadService {
 
     // 1. Define temporary file path
     final dir = await getTemporaryDirectory();
-    // Sanitize title for file name
-    final safeTitle = video.title.replaceAll(RegExp(r'[^\w\s]+]'), '_');
+    
+    // ⭐️ FIXED: Use robust _sanitizeTitle function
+    final safeTitle = _sanitizeTitle(video.title);
     final filePath = '${dir.path}/$safeTitle.mp4';
     final file = File(filePath);
 
@@ -158,7 +181,7 @@ class DownloadService {
     return filePath;
   }
 
-  // --- 2. FACEBOOK DOWNLOAD (Fully Implemented) ---
+  // --- 2. FACEBOOK DOWNLOAD (FIXED Sanitization) ---
   Future<String> downloadFacebookVideo(String url) async {
     // 1. Get the direct video URL and title using the new API helper
     final linkData = await _getFacebookDownloadUrl(url);
@@ -166,13 +189,14 @@ class DownloadService {
     final videoTitle = linkData['title']!;
 
     // 2. Download the video using the direct link
-    final safeTitle = videoTitle.replaceAll(RegExp(r'[^\w\s]+]'), '_');
+    // ⭐️ FIXED: Use robust _sanitizeTitle function
+    final safeTitle = _sanitizeTitle(videoTitle);
     final fileName = '$safeTitle.mp4';
 
     return _httpDownloadToFile(directUrl, fileName);
   }
 
-  // --- 3. TIKTOK DOWNLOAD (Fully Implemented) ---
+  // --- 3. TIKTOK DOWNLOAD (FIXED Sanitization) ---
 
   Future<String> downloadTiktokVideo(String url) async {
     // 1. Get the direct video URL and title using the API helper
@@ -181,13 +205,14 @@ class DownloadService {
     final videoTitle = linkData['title']!;
 
     // 2. Download the video using the direct link
-    final safeTitle = videoTitle.replaceAll(RegExp(r'[^\w\s]+]'), '_');
+    // ⭐️ FIXED: Use robust _sanitizeTitle function
+    final safeTitle = _sanitizeTitle(videoTitle);
     final fileName = '$safeTitle.mp4';
 
     return _httpDownloadToFile(directUrl, fileName);
   }
 
-  // --- 4. SAVE TO TELEGRAM BOT (MODIFIED) ---
+  // --- 4. SAVE TO TELEGRAM BOT (No Change) ---
 
   Future<void> saveToBot(
     String tempFilePath,

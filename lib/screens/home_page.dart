@@ -505,8 +505,8 @@ class _HomePageState extends ConsumerState<HomePage> {
   // --- Build method with responsive layout switching ---
   @override
   Widget build(BuildContext context) {
-    final iWidth = MediaQuery.of(context).size.width;
-    final iHeight = MediaQuery.of(context).size.height;
+    // final iWidth = MediaQuery.of(context).size.width;
+    // final iHeight = MediaQuery.of(context).size.height;
 
     final currentUrl = ref.watch(urlProvider);
 

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "524411589574",
+    "project_id": "video-downloader-admin",
+    "storage_bucket": "video-downloader-admin.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:524411589574:android:ee1fa5e45ef8c51fd6d8c7",
+        "android_client_info": {
+          "package_name": "com.example.video_downloader"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3ZOi1vygNaYLe3NpcjQ2iAqU7yTqr904"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:524411589574:android:193576297383a066d6d8c7",
+        "android_client_info": {
+          "package_name": "com.example.video_downloader_admin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC3ZOi1vygNaYLe3NpcjQ2iAqU7yTqr904"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

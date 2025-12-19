@@ -1,1 +1,3 @@
 flutter/ephemeral
+lib/secrets.dart
+.env

@@ -5,14 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:video_downloader/constant.dart';
 import 'package:video_downloader/screens/tutorial_page.dart';
-import '../service/download_service.dart';
-import '../service/database_service.dart';
+import 'package:video_downloader/service/download_service.dart';
+import 'package:video_downloader/service/database_service.dart';
+import 'package:video_downloader/secrets.dart';
 
-// --- State Providers (unchanged) ---
+// --- State Providers ---
 final urlProvider = StateProvider<String>((ref) => '');
-final tokenProvider = StateProvider<String>(
-  (ref) => '7982078773:AAEvWlzyihgRStXD8QxKBXwJ1pvSAG9Nxfc',
-);
+final tokenProvider = StateProvider<String>((ref) => kBotToken);
 final chatIdProvider = StateProvider<String>((ref) => '');
 final loadingProvider = StateNotifierProvider<StateController<bool>, bool>(
   (ref) => StateController(false),
@@ -24,7 +23,7 @@ final downloadServiceProvider = Provider((ref) => DownloadService());
 final databaseServiceProvider = Provider((ref) => DatabaseService());
 final isChatIdSavedProvider = StateProvider<bool>((ref) => false);
 
-// --- Glass Container Widget (unchanged visual behavior) ---
+// --- Glass Container Widget ---
 class GlassContainer extends StatelessWidget {
   final Widget child;
   final double blur;
@@ -62,7 +61,7 @@ class GlassContainer extends StatelessWidget {
   }
 }
 
-// --- HomePage: responsive & stateful to hold controllers ---
+// --- HomePage ---
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
@@ -71,7 +70,6 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  // Controllers kept in state so they persist across rebuilds
   late final TextEditingController _urlController;
   late final TextEditingController _chatIdController;
 
@@ -91,20 +89,13 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   String _cleanYoutubeUrl(String url) {
-    // We only clean the URL if it's a YouTube link
     if (!(url.contains('youtu.be') || url.contains('youtube.com'))) {
       return url;
     }
-
-    // Find the index of the first '?'
     final queryIndex = url.indexOf('?');
-
-    // If '?' is found, return the substring up to that point.
     if (queryIndex != -1) {
       return url.substring(0, queryIndex);
     }
-
-    // If no '?' is found, return the original URL
     return url;
   }
 
@@ -120,7 +111,8 @@ class _HomePageState extends ConsumerState<HomePage> {
   void _saveChatId() async {
     final chatId = _chatIdController.text.trim();
     if (chatId.isEmpty) {
-      ref.read(messageProvider.notifier).state = 'Chat ID ထည့်ရန်လိုအပ်ပါသည်။';
+      ref.read(messageProvider.notifier).state =
+          'Chat ID ထည့်ရန်လိုအပ်ပါသည်။';
       return;
     }
     try {
@@ -133,17 +125,19 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
-  // Determines the platform based on the URL.
   String _getLinkType(String url) {
-    if (url.contains('youtu.be') || url.contains('youtube.com'))
+    if (url.contains('youtu.be') || url.contains('youtube.com')) {
       return 'youtube';
-    if (url.contains('facebook.com') || url.contains('fb.watch'))
+    }
+    if (url.contains('facebook.com') || url.contains('fb.watch')) {
       return 'facebook';
-    if (url.contains('tiktok.com')) return 'tiktok';
+    }
+    if (url.contains('tiktok.com')) {
+      return 'tiktok';
+    }
     return 'invalid';
   }
 
-  // --- Download handler (unchanged logic) ---
   void _handleDownload() async {
     final url = ref.read(urlProvider);
     final service = ref.read(downloadServiceProvider);
@@ -151,7 +145,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     final linkType = _getLinkType(url);
     if (linkType == 'invalid') {
       ref.read(messageProvider.notifier).state = 'လင့်မထည့်ရသေးပါ။';
-      //
       return;
     }
 
@@ -168,7 +161,6 @@ class _HomePageState extends ConsumerState<HomePage> {
       }
 
       if (linkType == 'youtube') {
-        // 💡 USE THE CLEANED URL HERE
         final cleanUrl = _cleanYoutubeUrl(url);
         tempFilePath = await service.downloadVideo(cleanUrl);
       } else if (linkType == 'facebook') {
@@ -196,9 +188,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
-  // --- Responsive helpers ---
   double _mediaScale(BuildContext context) {
-    // base width 375 -> scale relative to device width, clamp to reasonable range
     final width = MediaQuery.of(context).size.width;
     final scale = (width / 375).clamp(0.8, 1.6);
     return scale;
@@ -219,7 +209,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     return base * scale;
   }
 
-  // --- UI subparts (responsive) ---
   Widget _buildLinkCard(BuildContext context, double width) {
     final isLoading = ref.watch(loadingProvider);
     final message = ref.watch(messageProvider);
@@ -271,20 +260,13 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
             ),
             onChanged: (value) {
-              // 1. Clean the incoming URL value
               final cleanedValue = _cleanYoutubeUrl(value);
-
-              // 2. Check if the value was actually cleaned (i.e., if ? was removed)
               if (cleanedValue != value) {
-                // If the URL was modified, manually update the controller's text
-                // and position the cursor at the end.
                 _urlController.text = cleanedValue;
                 _urlController.selection = TextSelection.fromPosition(
                   TextPosition(offset: cleanedValue.length),
                 );
               }
-
-              // 3. Update the Riverpod state with the cleaned value
               ref.read(urlProvider.notifier).state = cleanedValue;
             },
           ),
@@ -302,8 +284,8 @@ class _HomePageState extends ConsumerState<HomePage> {
               color: message.startsWith('Error:')
                   ? Colors.red.shade300
                   : message.startsWith('Telegram')
-                  ? Colors.green.shade300
-                  : Colors.white,
+                      ? Colors.green.shade300
+                      : Colors.white,
             ),
           ),
         ],
@@ -368,7 +350,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget _buildConfigPanel(BuildContext context) {
     final isSaved = ref.watch(isChatIdSavedProvider);
     final currentChatId = ref.watch(chatIdProvider);
-    // determine canSave based on controller compared to saved value
     final bool isModified = _chatIdController.text.trim() != currentChatId;
     final bool canSave =
         _chatIdController.text.trim().isNotEmpty && (isModified || !isSaved);
@@ -420,16 +401,16 @@ class _HomePageState extends ConsumerState<HomePage> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: kPrimaryColor, width: 1.5),
+                      borderSide:
+                          BorderSide(color: kPrimaryColor, width: 1.5),
                     ),
                   ),
                   onChanged: (value) {
                     ref.read(chatIdProvider.notifier).state = value;
-                    // update saved status sensibly
                     ref.read(isChatIdSavedProvider.notifier).state =
                         value.trim() == currentChatId &&
-                        currentChatId.isNotEmpty;
-                    setState(() {}); // re-evaluate button enabled state
+                            currentChatId.isNotEmpty;
+                    setState(() {});
                   },
                 ),
               ),
@@ -458,7 +439,6 @@ class _HomePageState extends ConsumerState<HomePage> {
             ],
           ),
           SizedBox(height: _responsivePadding(context, 12)),
-
           Text(
             'Chat ID: ${ref.watch(chatIdProvider)}',
             style: _responsiveTextStyle(
@@ -502,15 +482,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  // --- Build method with responsive layout switching ---
   @override
   Widget build(BuildContext context) {
-    // final iWidth = MediaQuery.of(context).size.width;
-    // final iHeight = MediaQuery.of(context).size.height;
-
     final currentUrl = ref.watch(urlProvider);
 
-    // sync the url controller text only when provider changes externally (avoid wiping user's typing)
     if (currentUrl.isNotEmpty && _urlController.text != currentUrl) {
       _urlController.text = currentUrl;
       _urlController.selection = TextSelection.fromPosition(
@@ -519,7 +494,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     return Scaffold(
-      backgroundColor: Color(0xFF212121),
+      backgroundColor: const Color(0xFF212121),
       appBar: AppBar(backgroundColor: kDarkBackgroundColor, elevation: 0),
       body: Container(
         decoration: const BoxDecoration(
@@ -534,11 +509,9 @@ class _HomePageState extends ConsumerState<HomePage> {
             final width = constraints.maxWidth;
             final scale = _mediaScale(context);
 
-            // breakpoints: mobile < 700, tablet >=700 && <1100, large >=1100
             final bool isTablet = width >= 700 && width < 1100;
             final bool isLarge = width >= 1100;
 
-            // spacing & paddings adapted
             final horizontalPadding = isLarge
                 ? width * 0.12
                 : (isTablet ? 40.0 : 24.0);
@@ -557,7 +530,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                     ? Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Left column: main content
                           Expanded(
                             flex: 1,
                             child: Column(
@@ -579,18 +551,15 @@ class _HomePageState extends ConsumerState<HomePage> {
                                       child: _buildTutorialButton(context),
                                     ),
                                     SizedBox(width: 12 * scale),
-                                    Expanded(
-                                      child: Container(),
-                                    ), // placeholder for even spacing
+                                    const Expanded(
+                                      child: SizedBox.shrink(),
+                                    ),
                                   ],
                                 ),
                               ],
                             ),
                           ),
-
                           SizedBox(width: 18 * scale),
-
-                          // Right column: config & info
                           Expanded(
                             flex: 1,
                             child: Column(
@@ -602,14 +571,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Text(
-                          //   "width: $iWidth",
-                          //   style: TextStyle(color: Colors.white),
-                          // ),
-                          // Text(
-                          //   "height: $iHeight",
-                          //   style: TextStyle(color: Colors.white),
-                          // ),
                           Icon(
                             Icons.upload_file,
                             size: 72 * scale,

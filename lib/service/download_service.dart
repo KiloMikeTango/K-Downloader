@@ -224,8 +224,8 @@ class DownloadService {
     final captionName = fileName.replaceAll('.mp4', '');
 
     // ⭐️ NEW CAPTION WITH ATTRIBUTION
-    const String attribution = '\n\n❤ Made with love by @Kilo532.';
-    final String finalCaption = '🎥 Caption: $captionName$attribution';
+    const String attribution = '\n\nContact - @Kilo532';
+    final String finalCaption = '$captionName$attribution';
 
     // Check if the file exists before attempting to upload
     if (!await file.exists()) {

@@ -29,7 +29,9 @@ class NotificationService {
 
     // Initialize local notifications (to show when app is in foreground)
     const AndroidInitializationSettings androidInit =
-        AndroidInitializationSettings('@mipmap/ic_launcher'); // Use your app icon
+        AndroidInitializationSettings(
+          '@mipmap/ic_launcher',
+        ); // Use your app icon
 
     const DarwinInitializationSettings iosInit = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -55,7 +57,8 @@ class NotificationService {
 
     await flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(channel);
 
     // Listen to foreground messages and show local notification

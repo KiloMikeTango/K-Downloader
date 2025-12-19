@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:http/http.dart' as http;
 import 'package:video_downloader/constant.dart';
 import 'package:video_downloader/screens/tutorial_page.dart';
 import 'package:video_downloader/services/download_service.dart';
@@ -34,6 +35,12 @@ final messageProvider = StateNotifierProvider<StateController<String>, String>(
 final downloadServiceProvider = Provider((ref) => DownloadService());
 final databaseServiceProvider = Provider((ref) => DatabaseService());
 final isChatIdSavedProvider = StateProvider<bool>((ref) => false);
+
+// thumbnail URL for preview (YouTube + TikTok only)
+final thumbnailUrlProvider =
+    StateNotifierProvider<StateController<String?>, String?>(
+      (ref) => StateController<String?>(null),
+    );
 
 // --- Glass Container Widget ---
 class GlassContainer extends StatelessWidget {
@@ -149,6 +156,135 @@ class _HomePageState extends ConsumerState<HomePage> {
     return 'invalid';
   }
 
+  // --- Thumbnail helpers (YouTube + TikTok) ---
+
+  String? _extractYoutubeId(String url) {
+    try {
+      final uri = Uri.parse(url);
+
+      // 1) youtu.be/<id>
+      if (uri.host.contains('youtu.be')) {
+        if (uri.pathSegments.isNotEmpty) {
+          return uri.pathSegments.first;
+        }
+      }
+
+      // 2) youtube.com/watch?v=<id>
+      if (uri.host.contains('youtube.com')) {
+        final vParam = uri.queryParameters['v'];
+        if (vParam != null && vParam.isNotEmpty) {
+          return vParam;
+        }
+
+        // 3) youtube.com/shorts/<id>
+        if (uri.pathSegments.isNotEmpty &&
+            uri.pathSegments.first == 'shorts' &&
+            uri.pathSegments.length >= 2) {
+          return uri.pathSegments[1];
+        }
+      }
+
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _buildYoutubeThumbnail(String url) {
+    final id = _extractYoutubeId(url);
+    if (id == null || id.isEmpty) return null;
+    return 'https://i3.ytimg.com/vi/$id/hqdefault.jpg'; // standard pattern.[web:57][web:69]
+  }
+
+  String? _buildTiktokThumbnail(String url) {
+    // No official static pattern, so use TikTok oEmbed to show a preview frame.
+    // For now, just use the public oEmbed endpoint as an image source.[web:63]
+    try {
+      final encoded = Uri.encodeComponent(url);
+      return 'https://www.tiktok.com/oembed?url=$encoded';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Resolve TikTok short URLs like https://vt.tiktok.com/... to full
+  /// https://www.tiktok.com/@user/video/... before calling oEmbed.[web:84][web:88]
+  Future<String> _resolveTiktokUrl(String url) async {
+    try {
+      final client = http.Client();
+      try {
+        final request = http.Request('GET', Uri.parse(url))
+          ..followRedirects = false;
+        final response = await client.send(request);
+
+        // If it's a redirect, take the Location header as the real TikTok URL
+        if (response.isRedirect ||
+            response.statusCode == 301 ||
+            response.statusCode == 302) {
+          final location = response.headers['location'];
+          if (location != null && location.isNotEmpty) {
+            return location;
+          }
+        }
+
+        // If not a redirect, just return original
+        return url;
+      } finally {
+        client.close();
+      }
+    } catch (_) {
+      // On any failure, fall back to original
+      return url;
+    }
+  }
+
+  Future<String?> _fetchTiktokThumbnail(String url) async {
+    final resolvedUrl = await _resolveTiktokUrl(url);
+    final encoded = Uri.encodeComponent(resolvedUrl);
+    final oembedUrl = 'https://www.tiktok.com/oembed?url=$encoded';
+
+    try {
+      final res = await http.get(Uri.parse(oembedUrl));
+      if (res.statusCode != 200) return null;
+
+      // Very small manual JSON parse to avoid changes elsewhere.
+      final body = res.body;
+      final key = '"thumbnail_url":"';
+      final start = body.indexOf(key);
+      if (start == -1) return null;
+      final from = start + key.length;
+      final end = body.indexOf('"', from);
+      if (end == -1) return null;
+      final raw = body.substring(from, end);
+      return raw.replaceAll(r'\/', '/');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _updateThumbnailForUrl(String url) {
+    final type = _getLinkType(url);
+    String? thumb;
+    if (type == 'youtube') {
+      final thumb = _buildYoutubeThumbnail(url);
+      ref.read(thumbnailUrlProvider.notifier).state = thumb;
+      return;
+    }
+
+    if (type == 'tiktok') {
+      // async fetch for TikTok (handles vt.tiktok.com + full URLs)
+      ref.read(thumbnailUrlProvider.notifier).state = null;
+      _fetchTiktokThumbnail(url).then((thumb) {
+        if (!mounted) return;
+        if (ref.read(urlProvider) == url) {
+          ref.read(thumbnailUrlProvider.notifier).state = thumb;
+        }
+      });
+      return;
+    }
+    ref.read(thumbnailUrlProvider.notifier).state = thumb;
+  }
+
   void _handleDownload() async {
     final url = ref.read(urlProvider);
     final service = ref.read(downloadServiceProvider);
@@ -161,6 +297,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     // reset progress
     ref.read(downloadProgressProvider.notifier).state = 0.0;
+    ref.read(transferPhaseProvider.notifier).state = TransferPhase.downloading;
     ref.read(loadingProvider.notifier).state = true;
     ref.read(messageProvider.notifier).state = 'Download လုပ်နေပါသည်...';
     String? tempFilePath;
@@ -173,7 +310,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         throw Exception('Chat ID မထည့်ရသေးပါ။');
       }
 
-      void onProgress(double p) {
+      void onDownloadProgress(double p) {
         ref.read(downloadProgressProvider.notifier).state = p;
       }
 
@@ -181,31 +318,40 @@ class _HomePageState extends ConsumerState<HomePage> {
         final cleanUrl = _cleanYoutubeUrl(url);
         tempFilePath = await service.downloadVideo(
           cleanUrl,
-          onProgress: onProgress,
+          onProgress: onDownloadProgress,
         );
       } else if (linkType == 'facebook') {
         tempFilePath = await service.downloadFacebookVideo(
           url,
-          onProgress: onProgress,
+          onProgress: onDownloadProgress,
         );
       } else if (linkType == 'tiktok') {
         tempFilePath = await service.downloadTiktokVideo(
           url,
-          onProgress: onProgress,
+          onProgress: onDownloadProgress,
         );
       }
+
       // ensure bar hits 100% at end of download
       ref.read(downloadProgressProvider.notifier).state = 1.0;
+
       // switch to upload phase
       ref.read(transferPhaseProvider.notifier).state = TransferPhase.uploading;
       ref.read(downloadProgressProvider.notifier).state = 0.0;
       ref.read(messageProvider.notifier).state =
           'Telegram သို့ Video ပို့နေပါသည်...';
 
-      await service.saveToBot(tempFilePath!, token, chatId, onProgress);
+      void onUploadProgress(double p) {
+        ref.read(downloadProgressProvider.notifier).state = p;
+      }
+
+      await service.saveToBot(tempFilePath!, token, chatId, onUploadProgress);
+
+      ref.read(downloadProgressProvider.notifier).state = 1.0;
       ref.read(messageProvider.notifier).state =
           'Telegram သို့ Video ပို့ပြီးပါပြီ။';
       _urlController.clear();
+      ref.read(thumbnailUrlProvider.notifier).state = null;
     } catch (e) {
       ref.read(messageProvider.notifier).state = 'Error: ${e.toString()}';
       if (tempFilePath != null && await File(tempFilePath).exists()) {
@@ -215,10 +361,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     } finally {
       ref.read(urlProvider.notifier).state = '';
       ref.read(loadingProvider.notifier).state = false;
-      // if success, make sure bar reaches 100%
-      if (ref.read(messageProvider).startsWith('Telegram')) {
-        ref.read(downloadProgressProvider.notifier).state = 1.0;
-      }
+      ref.read(transferPhaseProvider.notifier).state = TransferPhase.idle;
     }
   }
 
@@ -243,25 +386,93 @@ class _HomePageState extends ConsumerState<HomePage> {
     return base * scale;
   }
 
-  Widget _buildLinkCard(BuildContext context, double width) {
-   final isLoading = ref.watch(loadingProvider);
-  final message = ref.watch(messageProvider);
-  final progress = ref.watch(downloadProgressProvider);
-  final phase = ref.watch(transferPhaseProvider);
+  Widget _buildThumbnailPreview(BuildContext context) {
+    final thumbnailUrl = ref.watch(thumbnailUrlProvider);
+    if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
-  final percent = (progress * 100).clamp(0, 100).toInt();
+    final scale = _mediaScale(context);
+    final radius = 14 * scale;
 
-  String phaseLabel;
-  switch (phase) {
-    case TransferPhase.downloading:
-      phaseLabel = 'Downloading: $percent%';
-      break;
-    case TransferPhase.uploading:
-      phaseLabel = 'Sending to Telegram: $percent%';
-      break;
-    default:
-      phaseLabel = '';
+    // Max width based on screen; keeps things responsive.
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Card already has horizontal padding; keep preview slightly inset
+    final maxWidth = (screenWidth * 0.8).clamp(220.0, 480.0);
+
+    return Column(
+      children: [
+        SizedBox(height: _responsivePadding(context, 16.5)),
+        Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radius + 2),
+                border: Border.all(
+                  color: const Color.fromARGB(255, 254, 107, 54),
+                  width: 1.5,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(radius),
+                child: AspectRatio(
+                  aspectRatio:
+                      16 /
+                      9, // fixed visual frame for all sources.[web:76][web:80]
+                  child: Image.network(
+                    thumbnailUrl,
+                    fit: BoxFit.cover, // fills frame, crops if needed.[web:77]
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        color: Colors.black26,
+                        child: const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: Colors.black26,
+                        child: Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white54,
+                            size: 28 * scale,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
+
+  Widget _buildLinkCard(BuildContext context, double width) {
+    final isLoading = ref.watch(loadingProvider);
+    final message = ref.watch(messageProvider);
+    final progress = ref.watch(downloadProgressProvider);
+    final phase = ref.watch(transferPhaseProvider);
+
+    final percent = (progress * 100).clamp(0, 100).toInt();
+
+    String phaseLabel;
+    switch (phase) {
+      case TransferPhase.downloading:
+        phaseLabel = 'Downloading: $percent%';
+        break;
+      case TransferPhase.uploading:
+        phaseLabel = 'Sending to Telegram: $percent%';
+        break;
+      default:
+        phaseLabel = '';
+    }
 
     return GlassContainer(
       blur: 10,
@@ -318,20 +529,25 @@ class _HomePageState extends ConsumerState<HomePage> {
                 );
               }
               ref.read(urlProvider.notifier).state = cleanedValue;
+              _updateThumbnailForUrl(cleanedValue);
             },
           ),
-          SizedBox(height: _responsivePadding(context, 18)),
+          // thumbnail just under the input
+          _buildThumbnailPreview(context),
+          SizedBox(height: _responsivePadding(context, 15)),
           if (isLoading) ...[
             LinearProgressIndicator(
               color: kPrimaryColor,
-              value: progress > 0 ? progress : null, // null => indeterminate
+              value: progress > 0 ? progress : null,
               minHeight: 4,
             ),
             SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
               child: Text(
-                progress > 0 ? '$percent%' : '',
+                phaseLabel.isNotEmpty
+                    ? phaseLabel
+                    : (progress > 0 ? '$percent%' : ''),
                 style: _responsiveTextStyle(
                   context,
                   size: 12,
@@ -340,7 +556,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
             ),
           ],
-          SizedBox(height: _responsivePadding(context, 12)),
+          SizedBox(height: _responsivePadding(context, 5.5)),
           Text(
             message.isEmpty ? 'လင့်ထည့်ပါ...' : message,
             textAlign: TextAlign.center,

@@ -5,9 +5,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:video_downloader/constant.dart';
 import 'package:video_downloader/screens/tutorial_page.dart';
-import 'package:video_downloader/service/download_service.dart';
-import 'package:video_downloader/service/database_service.dart';
+import 'package:video_downloader/services/download_service.dart';
+import 'package:video_downloader/services/database_service.dart';
 import 'package:video_downloader/secrets.dart';
+
+enum TransferPhase { idle, downloading, uploading }
+
+final transferPhaseProvider =
+    StateNotifierProvider<StateController<TransferPhase>, TransferPhase>(
+      (ref) => StateController(TransferPhase.idle),
+    );
+
+final downloadProgressProvider =
+    StateNotifierProvider<StateController<double>, double>(
+      (ref) => StateController(0.0),
+    );
 
 // --- State Providers ---
 final urlProvider = StateProvider<String>((ref) => '');
@@ -111,8 +123,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   void _saveChatId() async {
     final chatId = _chatIdController.text.trim();
     if (chatId.isEmpty) {
-      ref.read(messageProvider.notifier).state =
-          'Chat ID ထည့်ရန်လိုအပ်ပါသည်။';
+      ref.read(messageProvider.notifier).state = 'Chat ID ထည့်ရန်လိုအပ်ပါသည်။';
       return;
     }
     try {
@@ -148,6 +159,8 @@ class _HomePageState extends ConsumerState<HomePage> {
       return;
     }
 
+    // reset progress
+    ref.read(downloadProgressProvider.notifier).state = 0.0;
     ref.read(loadingProvider.notifier).state = true;
     ref.read(messageProvider.notifier).state = 'Download လုပ်နေပါသည်...';
     String? tempFilePath;
@@ -160,19 +173,36 @@ class _HomePageState extends ConsumerState<HomePage> {
         throw Exception('Chat ID မထည့်ရသေးပါ။');
       }
 
-      if (linkType == 'youtube') {
-        final cleanUrl = _cleanYoutubeUrl(url);
-        tempFilePath = await service.downloadVideo(cleanUrl);
-      } else if (linkType == 'facebook') {
-        tempFilePath = await service.downloadFacebookVideo(url);
-      } else if (linkType == 'tiktok') {
-        tempFilePath = await service.downloadTiktokVideo(url);
+      void onProgress(double p) {
+        ref.read(downloadProgressProvider.notifier).state = p;
       }
 
+      if (linkType == 'youtube') {
+        final cleanUrl = _cleanYoutubeUrl(url);
+        tempFilePath = await service.downloadVideo(
+          cleanUrl,
+          onProgress: onProgress,
+        );
+      } else if (linkType == 'facebook') {
+        tempFilePath = await service.downloadFacebookVideo(
+          url,
+          onProgress: onProgress,
+        );
+      } else if (linkType == 'tiktok') {
+        tempFilePath = await service.downloadTiktokVideo(
+          url,
+          onProgress: onProgress,
+        );
+      }
+      // ensure bar hits 100% at end of download
+      ref.read(downloadProgressProvider.notifier).state = 1.0;
+      // switch to upload phase
+      ref.read(transferPhaseProvider.notifier).state = TransferPhase.uploading;
+      ref.read(downloadProgressProvider.notifier).state = 0.0;
       ref.read(messageProvider.notifier).state =
-          'Download လုပ်ပြီးပါပြီ၊ Telegram သို့ Video ပို့နေပါသည်...';
+          'Telegram သို့ Video ပို့နေပါသည်...';
 
-      await service.saveToBot(tempFilePath!, token, chatId);
+      await service.saveToBot(tempFilePath!, token, chatId, onProgress);
       ref.read(messageProvider.notifier).state =
           'Telegram သို့ Video ပို့ပြီးပါပြီ။';
       _urlController.clear();
@@ -185,6 +215,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     } finally {
       ref.read(urlProvider.notifier).state = '';
       ref.read(loadingProvider.notifier).state = false;
+      // if success, make sure bar reaches 100%
+      if (ref.read(messageProvider).startsWith('Telegram')) {
+        ref.read(downloadProgressProvider.notifier).state = 1.0;
+      }
     }
   }
 
@@ -210,8 +244,24 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildLinkCard(BuildContext context, double width) {
-    final isLoading = ref.watch(loadingProvider);
-    final message = ref.watch(messageProvider);
+   final isLoading = ref.watch(loadingProvider);
+  final message = ref.watch(messageProvider);
+  final progress = ref.watch(downloadProgressProvider);
+  final phase = ref.watch(transferPhaseProvider);
+
+  final percent = (progress * 100).clamp(0, 100).toInt();
+
+  String phaseLabel;
+  switch (phase) {
+    case TransferPhase.downloading:
+      phaseLabel = 'Downloading: $percent%';
+      break;
+    case TransferPhase.uploading:
+      phaseLabel = 'Sending to Telegram: $percent%';
+      break;
+    default:
+      phaseLabel = '';
+  }
 
     return GlassContainer(
       blur: 10,
@@ -271,8 +321,25 @@ class _HomePageState extends ConsumerState<HomePage> {
             },
           ),
           SizedBox(height: _responsivePadding(context, 18)),
-          if (ref.watch(loadingProvider))
-            LinearProgressIndicator(color: kPrimaryColor),
+          if (isLoading) ...[
+            LinearProgressIndicator(
+              color: kPrimaryColor,
+              value: progress > 0 ? progress : null, // null => indeterminate
+              minHeight: 4,
+            ),
+            SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                progress > 0 ? '$percent%' : '',
+                style: _responsiveTextStyle(
+                  context,
+                  size: 12,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          ],
           SizedBox(height: _responsivePadding(context, 12)),
           Text(
             message.isEmpty ? 'လင့်ထည့်ပါ...' : message,
@@ -284,8 +351,8 @@ class _HomePageState extends ConsumerState<HomePage> {
               color: message.startsWith('Error:')
                   ? Colors.red.shade300
                   : message.startsWith('Telegram')
-                      ? Colors.green.shade300
-                      : Colors.white,
+                  ? Colors.green.shade300
+                  : Colors.white,
             ),
           ),
         ],
@@ -401,15 +468,14 @@ class _HomePageState extends ConsumerState<HomePage> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide:
-                          BorderSide(color: kPrimaryColor, width: 1.5),
+                      borderSide: BorderSide(color: kPrimaryColor, width: 1.5),
                     ),
                   ),
                   onChanged: (value) {
                     ref.read(chatIdProvider.notifier).state = value;
                     ref.read(isChatIdSavedProvider.notifier).state =
                         value.trim() == currentChatId &&
-                            currentChatId.isNotEmpty;
+                        currentChatId.isNotEmpty;
                     setState(() {});
                   },
                 ),
@@ -551,9 +617,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                                       child: _buildTutorialButton(context),
                                     ),
                                     SizedBox(width: 12 * scale),
-                                    const Expanded(
-                                      child: SizedBox.shrink(),
-                                    ),
+                                    const Expanded(child: SizedBox.shrink()),
                                   ],
                                 ),
                               ],

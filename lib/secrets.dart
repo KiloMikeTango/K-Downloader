@@ -1,1 +1,0 @@
-const String kBotToken = "7982078773:AAEvWlzyihgRStXD8QxKBXwJ1pvSAG9Nxfc";

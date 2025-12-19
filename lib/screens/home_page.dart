@@ -150,7 +150,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (url.contains('facebook.com') || url.contains('fb.watch')) {
       return 'facebook';
     }
-    if (url.contains('tiktok.com')) {
+    if (url.contains('tiktok.com') || url.contains('vt.tiktok.com')) {
       return 'tiktok';
     }
     return 'invalid';
@@ -193,22 +193,11 @@ class _HomePageState extends ConsumerState<HomePage> {
   String? _buildYoutubeThumbnail(String url) {
     final id = _extractYoutubeId(url);
     if (id == null || id.isEmpty) return null;
-    return 'https://i3.ytimg.com/vi/$id/hqdefault.jpg'; // standard pattern.[web:57][web:69]
-  }
-
-  String? _buildTiktokThumbnail(String url) {
-    // No official static pattern, so use TikTok oEmbed to show a preview frame.
-    // For now, just use the public oEmbed endpoint as an image source.[web:63]
-    try {
-      final encoded = Uri.encodeComponent(url);
-      return 'https://www.tiktok.com/oembed?url=$encoded';
-    } catch (_) {
-      return null;
-    }
+    return 'https://i3.ytimg.com/vi/$id/hqdefault.jpg';
   }
 
   /// Resolve TikTok short URLs like https://vt.tiktok.com/... to full
-  /// https://www.tiktok.com/@user/video/... before calling oEmbed.[web:84][web:88]
+  /// https://www.tiktok.com/@user/video/... before calling oEmbed.
   Future<String> _resolveTiktokUrl(String url) async {
     try {
       final client = http.Client();
@@ -217,7 +206,6 @@ class _HomePageState extends ConsumerState<HomePage> {
           ..followRedirects = false;
         final response = await client.send(request);
 
-        // If it's a redirect, take the Location header as the real TikTok URL
         if (response.isRedirect ||
             response.statusCode == 301 ||
             response.statusCode == 302) {
@@ -227,13 +215,11 @@ class _HomePageState extends ConsumerState<HomePage> {
           }
         }
 
-        // If not a redirect, just return original
         return url;
       } finally {
         client.close();
       }
     } catch (_) {
-      // On any failure, fall back to original
       return url;
     }
   }
@@ -247,7 +233,6 @@ class _HomePageState extends ConsumerState<HomePage> {
       final res = await http.get(Uri.parse(oembedUrl));
       if (res.statusCode != 200) return null;
 
-      // Very small manual JSON parse to avoid changes elsewhere.
       final body = res.body;
       final key = '"thumbnail_url":"';
       final start = body.indexOf(key);
@@ -264,7 +249,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   void _updateThumbnailForUrl(String url) {
     final type = _getLinkType(url);
-    String? thumb;
+
     if (type == 'youtube') {
       final thumb = _buildYoutubeThumbnail(url);
       ref.read(thumbnailUrlProvider.notifier).state = thumb;
@@ -272,7 +257,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     if (type == 'tiktok') {
-      // async fetch for TikTok (handles vt.tiktok.com + full URLs)
       ref.read(thumbnailUrlProvider.notifier).state = null;
       _fetchTiktokThumbnail(url).then((thumb) {
         if (!mounted) return;
@@ -282,7 +266,8 @@ class _HomePageState extends ConsumerState<HomePage> {
       });
       return;
     }
-    ref.read(thumbnailUrlProvider.notifier).state = thumb;
+
+    ref.read(thumbnailUrlProvider.notifier).state = null;
   }
 
   void _handleDownload() async {
@@ -295,7 +280,6 @@ class _HomePageState extends ConsumerState<HomePage> {
       return;
     }
 
-    // reset progress
     ref.read(downloadProgressProvider.notifier).state = 0.0;
     ref.read(transferPhaseProvider.notifier).state = TransferPhase.downloading;
     ref.read(loadingProvider.notifier).state = true;
@@ -332,10 +316,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         );
       }
 
-      // ensure bar hits 100% at end of download
       ref.read(downloadProgressProvider.notifier).state = 1.0;
 
-      // switch to upload phase
       ref.read(transferPhaseProvider.notifier).state = TransferPhase.uploading;
       ref.read(downloadProgressProvider.notifier).state = 0.0;
       ref.read(messageProvider.notifier).state =
@@ -353,16 +335,30 @@ class _HomePageState extends ConsumerState<HomePage> {
       _urlController.clear();
       ref.read(thumbnailUrlProvider.notifier).state = null;
     } catch (e) {
-      ref.read(messageProvider.notifier).state = 'Error: ${e.toString()}';
+      final msg = e.toString();
+      if (msg.contains('CANCELLED')) {
+        ref.read(messageProvider.notifier).state =
+            'Download ရပ်ဆိုင်းလိုက်ပါပြီ။';
+      } else {
+        ref.read(messageProvider.notifier).state = 'Error: $msg';
+      }
+
       if (tempFilePath != null && await File(tempFilePath).exists()) {
         await File(tempFilePath).delete();
-        _urlController.clear();
       }
+      _urlController.clear();
+      ref.read(thumbnailUrlProvider.notifier).state = null;
     } finally {
       ref.read(urlProvider.notifier).state = '';
       ref.read(loadingProvider.notifier).state = false;
       ref.read(transferPhaseProvider.notifier).state = TransferPhase.idle;
+      ref.read(downloadProgressProvider.notifier).state = 0.0;
     }
+  }
+
+  void _handleCancel() {
+    final service = ref.read(downloadServiceProvider);
+    service.cancelActiveOperation();
   }
 
   double _mediaScale(BuildContext context) {
@@ -395,9 +391,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     final scale = _mediaScale(context);
     final radius = 14 * scale;
 
-    // Max width based on screen; keeps things responsive.
     final screenWidth = MediaQuery.of(context).size.width;
-    // Card already has horizontal padding; keep preview slightly inset
     final maxWidth = (screenWidth * 0.8).clamp(220.0, 480.0);
 
     return Column(
@@ -417,12 +411,10 @@ class _HomePageState extends ConsumerState<HomePage> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(radius),
                 child: AspectRatio(
-                  aspectRatio:
-                      16 /
-                      9, // fixed visual frame for all sources.[web:76][web:80]
+                  aspectRatio: 16 / 9,
                   child: Image.network(
                     thumbnailUrl,
-                    fit: BoxFit.cover, // fills frame, crops if needed.[web:77]
+                    fit: BoxFit.cover,
                     loadingBuilder: (context, child, loadingProgress) {
                       if (loadingProgress == null) return child;
                       return Container(
@@ -462,6 +454,9 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     final percent = (progress * 100).clamp(0, 100).toInt();
 
+    final isDownloading = phase == TransferPhase.downloading;
+    final isUploading = phase == TransferPhase.uploading;
+
     String phaseLabel;
     switch (phase) {
       case TransferPhase.downloading:
@@ -474,6 +469,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         phaseLabel = '';
     }
 
+    final scale = _mediaScale(context);
+
     return GlassContainer(
       blur: 10,
       opacity: 0.06,
@@ -485,6 +482,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         children: [
           TextField(
             controller: _urlController,
+            enabled:
+                !isLoading, // disable editing while downloading or uploading.[web:100][web:103]
             style: _responsiveTextStyle(
               context,
               size: 15,
@@ -532,7 +531,6 @@ class _HomePageState extends ConsumerState<HomePage> {
               _updateThumbnailForUrl(cleanedValue);
             },
           ),
-          // thumbnail just under the input
           _buildThumbnailPreview(context),
           SizedBox(height: _responsivePadding(context, 15)),
           if (isLoading) ...[
@@ -543,7 +541,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
             SizedBox(height: 8),
             Align(
-              alignment: Alignment.centerRight,
+              alignment: Alignment.center,
               child: Text(
                 phaseLabel.isNotEmpty
                     ? phaseLabel
@@ -556,6 +554,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
             ),
           ],
+
           SizedBox(height: _responsivePadding(context, 5.5)),
           Text(
             message.isEmpty ? 'လင့်ထည့်ပါ...' : message,
@@ -569,6 +568,32 @@ class _HomePageState extends ConsumerState<HomePage> {
                   : message.startsWith('Telegram')
                   ? Colors.green.shade300
                   : Colors.white,
+            ),
+          ),
+
+          SizedBox(height: 12),
+          // CANCEL button below the text
+          SizedBox(
+            height: 32 * scale,
+            child: ElevatedButton.icon(
+              onPressed: isDownloading ? _handleCancel : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isDownloading ? kPrimaryColor : Colors.grey,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 12 * scale),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10 * scale),
+                ),
+                elevation: 0,
+              ),
+              icon: Icon(Icons.close, size: 16 * scale),
+              label: Text(
+                'CANCEL',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12 * scale,
+                ),
+              ),
             ),
           ),
         ],

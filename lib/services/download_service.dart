@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -7,12 +8,24 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'package:http/http.dart' as http;
 
 /// Signature for progress callback: value in range 0.0–1.0.
-/// Will be called multiple times while downloading, and 1.0 at the end.
+/// Will be called multiple times while downloading or uploading, and 1.0 at the end.
 typedef DownloadProgressCallback = void Function(double progress);
 
 class DownloadService {
   final Dio _dio = Dio();
   final YoutubeExplode _yt = YoutubeExplode();
+
+  // Current active cancel tokens / flags
+  CancelToken? _currentDioCancelToken;
+  bool _youtubeCancelRequested = false;
+
+  // Expose cancel method
+  void cancelActiveOperation() {
+    // Cancel Dio tasks (TikTok/Facebook download or Telegram upload).[web:94][web:95][web:96]
+    _currentDioCancelToken?.cancel('User cancelled');
+    // Cancel YouTube streaming download
+    _youtubeCancelRequested = true;
+  }
 
   // ⭐️ Filename sanitization
   String _sanitizeTitle(String title) {
@@ -28,7 +41,7 @@ class DownloadService {
     return safeTitle;
   }
 
-  // --- Core HTTP download with real-time progress ---
+  // --- Core HTTP download with real-time progress + cancel ---
   Future<String> _httpDownloadToFile(
     String directUrl,
     String fileName, {
@@ -39,22 +52,36 @@ class DownloadService {
 
     if (kDebugMode) print('Starting HTTP download to: $filePath');
 
-    await _dio.download(
-      directUrl,
-      filePath,
-      options: Options(
-        receiveTimeout: const Duration(minutes: 5),
-        followRedirects: true,
-      ),
-      onReceiveProgress: (received, total) {
-        if (onProgress != null && total > 0) {
-          final progress = received / total;
-          onProgress(progress.clamp(0.0, 1.0));
-        }
-      },
-    );
+    final cancelToken = CancelToken();
+    _currentDioCancelToken = cancelToken;
 
-    // Ensure final 100%
+    try {
+      await _dio.download(
+        directUrl,
+        filePath,
+        options: Options(
+          receiveTimeout: const Duration(minutes: 5),
+          followRedirects: true,
+        ),
+        cancelToken: cancelToken,
+        onReceiveProgress: (received, total) {
+          if (onProgress != null && total > 0) {
+            final progress = received / total;
+            onProgress(progress.clamp(0.0, 1.0));
+          }
+        },
+      );
+    } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        if (kDebugMode) print('HTTP download cancelled: ${e.message}');
+        // Propagate a specific cancel exception upwards
+        throw Exception('CANCELLED');
+      }
+      rethrow;
+    } finally {
+      _currentDioCancelToken = null;
+    }
+
     if (onProgress != null) {
       onProgress(1.0);
     }
@@ -156,11 +183,13 @@ class DownloadService {
     }
   }
 
-  // --- 1. YOUTUBE DOWNLOAD with real-time progress ---
+  // --- 1. YOUTUBE DOWNLOAD with real-time progress + cancel ---
   Future<String> downloadVideo(
     String url, {
     DownloadProgressCallback? onProgress,
   }) async {
+    _youtubeCancelRequested = false;
+
     final videoId = VideoId(url);
     final video = await _yt.videos.get(videoId);
     final manifest = await _yt.videos.streamsClient.getManifest(videoId);
@@ -179,30 +208,47 @@ class DownloadService {
     final videoStream = _yt.videos.streamsClient.get(streamInfo);
     final fileStream = file.openWrite();
 
-    // Try to compute progress if contentLength is known
     final totalBytes = streamInfo.size.totalBytes;
     int receivedBytes = 0;
 
-    final streamWithProgress = videoStream.map((data) {
-      receivedBytes += data.length;
-      if (onProgress != null && totalBytes > 0) {
-        final progress = receivedBytes / totalBytes;
-        onProgress(progress.clamp(0.0, 1.0));
+    try {
+      await for (final data in videoStream) {
+        if (_youtubeCancelRequested) {
+          if (kDebugMode) print('YouTube download cancelled by user');
+          await fileStream.close();
+          if (await file.exists()) {
+            await file.delete();
+          }
+          throw Exception('CANCELLED');
+        }
+
+        receivedBytes += data.length;
+        fileStream.add(data);
+
+        if (onProgress != null && totalBytes > 0) {
+          final progress = receivedBytes / totalBytes;
+          onProgress(progress.clamp(0.0, 1.0));
+        }
       }
-      return data;
-    });
 
-    await streamWithProgress.pipe(fileStream);
-    await fileStream.close();
+      await fileStream.close();
+      if (onProgress != null) {
+        onProgress(1.0);
+      }
 
-    if (onProgress != null) {
-      onProgress(1.0);
+      return filePath;
+    } catch (e) {
+      await fileStream.close();
+      if (await file.exists()) {
+        await file.delete();
+      }
+      rethrow;
+    } finally {
+      _youtubeCancelRequested = false;
     }
-
-    return filePath;
   }
 
-  // --- 2. FACEBOOK DOWNLOAD with real-time progress ---
+  // --- 2. FACEBOOK DOWNLOAD with real-time progress + cancel ---
   Future<String> downloadFacebookVideo(
     String url, {
     DownloadProgressCallback? onProgress,
@@ -214,14 +260,10 @@ class DownloadService {
     final safeTitle = _sanitizeTitle(videoTitle);
     final fileName = '$safeTitle.mp4';
 
-    return _httpDownloadToFile(
-      directUrl,
-      fileName,
-      onProgress: onProgress,
-    );
+    return _httpDownloadToFile(directUrl, fileName, onProgress: onProgress);
   }
 
-  // --- 3. TIKTOK DOWNLOAD with real-time progress ---
+  // --- 3. TIKTOK DOWNLOAD with real-time progress + cancel ---
   Future<String> downloadTiktokVideo(
     String url, {
     DownloadProgressCallback? onProgress,
@@ -233,16 +275,10 @@ class DownloadService {
     final safeTitle = _sanitizeTitle(videoTitle);
     final fileName = '$safeTitle.mp4';
 
-    return _httpDownloadToFile(
-      directUrl,
-      fileName,
-      onProgress: onProgress,
-    );
+    return _httpDownloadToFile(directUrl, fileName, onProgress: onProgress);
   }
 
-  // --- 4. SAVE TO TELEGRAM BOT ---
- 
- 
+  // --- 4. SAVE TO TELEGRAM BOT with upload progress + cancel ---
   Future<void> saveToBot(
     String tempFilePath,
     String botToken,
@@ -259,16 +295,16 @@ class DownloadService {
       throw Exception('Temporary video file was not found.');
     }
 
+    final cancelToken = CancelToken();
+    _currentDioCancelToken = cancelToken;
+
     try {
       final apiUrl = 'https://api.telegram.org/bot$botToken/sendVideo';
 
       final formData = FormData.fromMap({
         'chat_id': chatId,
         'caption': finalCaption,
-        'video': await MultipartFile.fromFile(
-          tempFilePath,
-          filename: fileName,
-        ),
+        'video': await MultipartFile.fromFile(tempFilePath, filename: fileName),
         'supports_streaming': true,
       });
 
@@ -276,24 +312,36 @@ class DownloadService {
         apiUrl,
         data: formData,
         options: Options(sendTimeout: const Duration(minutes: 5)),
+        cancelToken: cancelToken,
         onSendProgress: (sent, total) {
-        if (onProgress != null && total > 0) {
-          final progress = sent / total;
-          onProgress(progress.clamp(0.0, 1.0));
-        }
-      },
-    );
-      
+          if (onProgress != null && total > 0) {
+            final progress = sent / total;
+            onProgress(progress.clamp(0.0, 1.0));
+          }
+        },
+      );
 
       if (await file.exists()) {
         await file.delete();
       }
+    } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        if (kDebugMode) print('Telegram upload cancelled: ${e.message}');
+        // Don't show error toast for cancel; propagate special exception.
+        throw Exception('CANCELLED');
+      }
+      if (await file.exists()) {
+        await file.delete();
+      }
+      throw Exception('Chat ID မှားနေပါသည်။');
     } catch (e) {
       if (kDebugMode) print('Telegram Upload Error: $e');
       if (await file.exists()) {
         await file.delete();
       }
       throw Exception('Chat ID မှားနေပါသည်။');
+    } finally {
+      _currentDioCancelToken = null;
     }
   }
 }

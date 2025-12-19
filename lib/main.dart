@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:video_downloader/firebase_options.dart';
 import 'package:video_downloader/screens/home_page.dart';
 import 'package:video_downloader/screens/maintenance_screen.dart';
+import 'package:video_downloader/screens/splash_screen.dart';
 import 'package:video_downloader/services/notification_service.dart';
 import 'package:window_size/window_size.dart';
 
@@ -70,13 +71,12 @@ class _MyAppState extends ConsumerState<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    final isMaintenance = ref.watch(maintenanceProvider);
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Video Downloader',
+      title: 'K Downloader',
       theme: ThemeData(useMaterial3: true),
-      home: isMaintenance ? const MaintenanceScreen() : const HomePage(),
+      home: SplashScreen(),
     );
   }
 }

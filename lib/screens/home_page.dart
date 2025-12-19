@@ -52,25 +52,25 @@ class GlassContainer extends StatelessWidget {
   const GlassContainer({
     super.key,
     required this.child,
-    this.blur = 15,
-    this.opacity = 0.05,
+    this.blur = 18,
+    this.opacity = 0.10,
     this.padding = const EdgeInsets.all(16),
   });
 
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(22),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
             color: kGlassBaseColor.withOpacity(opacity),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: kGlassBaseColor.withOpacity(0.08),
-              width: 1.2,
+              color: Colors.white.withOpacity(0.20),
+              width: 1.1,
             ),
           ),
           child: child,
@@ -88,9 +88,13 @@ class HomePage extends ConsumerStatefulWidget {
   ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends ConsumerState<HomePage> {
+class _HomePageState extends ConsumerState<HomePage>
+    with TickerProviderStateMixin {
   late final TextEditingController _urlController;
   late final TextEditingController _chatIdController;
+
+  late final AnimationController _bgController;
+  late final Animation<double> _bgAnimation;
 
   @override
   void initState() {
@@ -98,12 +102,23 @@ class _HomePageState extends ConsumerState<HomePage> {
     _urlController = TextEditingController();
     _chatIdController = TextEditingController();
     _loadSavedChatId();
+
+    _bgController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 16),
+    )..repeat(reverse: true);
+
+    _bgAnimation = CurvedAnimation(
+      parent: _bgController,
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
   void dispose() {
     _urlController.dispose();
     _chatIdController.dispose();
+    _bgController.dispose();
     super.dispose();
   }
 
@@ -162,21 +177,18 @@ class _HomePageState extends ConsumerState<HomePage> {
     try {
       final uri = Uri.parse(url);
 
-      // 1) youtu.be/<id>
       if (uri.host.contains('youtu.be')) {
         if (uri.pathSegments.isNotEmpty) {
           return uri.pathSegments.first;
         }
       }
 
-      // 2) youtube.com/watch?v=<id>
       if (uri.host.contains('youtube.com')) {
         final vParam = uri.queryParameters['v'];
         if (vParam != null && vParam.isNotEmpty) {
           return vParam;
         }
 
-        // 3) youtube.com/shorts/<id>
         if (uri.pathSegments.isNotEmpty &&
             uri.pathSegments.first == 'shorts' &&
             uri.pathSegments.length >= 2) {
@@ -196,8 +208,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     return 'https://i3.ytimg.com/vi/$id/hqdefault.jpg';
   }
 
-  /// Resolve TikTok short URLs like https://vt.tiktok.com/... to full
-  /// https://www.tiktok.com/@user/video/... before calling oEmbed.
   Future<String> _resolveTiktokUrl(String url) async {
     try {
       final client = http.Client();
@@ -472,8 +482,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     final scale = _mediaScale(context);
 
     return GlassContainer(
-      blur: 10,
-      opacity: 0.06,
+      blur: 18,
+      opacity: 0.10,
       padding: EdgeInsets.symmetric(
         horizontal: _responsivePadding(context, 18),
         vertical: _responsivePadding(context, 20),
@@ -482,8 +492,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         children: [
           TextField(
             controller: _urlController,
-            enabled:
-                !isLoading, // disable editing while downloading or uploading.[web:100][web:103]
+            enabled: !isLoading,
             style: _responsiveTextStyle(
               context,
               size: 15,
@@ -496,10 +505,10 @@ class _HomePageState extends ConsumerState<HomePage> {
               hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
               labelStyle: TextStyle(color: Colors.white.withOpacity(0.75)),
               filled: true,
-              fillColor: kGlassBaseColor.withOpacity(0.08),
+              fillColor: Colors.white.withOpacity(0.05),
               prefixIcon: Icon(
                 Icons.link,
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withOpacity(0.7),
               ),
               suffixIcon: isLoading
                   ? Padding(
@@ -511,11 +520,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                     )
                   : null,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
                 borderSide: BorderSide.none,
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
                 borderSide: BorderSide(color: kPrimaryColor, width: 1.8),
               ),
             ),
@@ -554,7 +563,6 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
             ),
           ],
-
           SizedBox(height: _responsivePadding(context, 5.5)),
           Text(
             message.isEmpty ? 'လင့်ထည့်ပါ...' : message,
@@ -570,9 +578,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   : Colors.white,
             ),
           ),
-
           SizedBox(height: 12),
-          // CANCEL button below the text
           SizedBox(
             height: 32 * scale,
             child: ElevatedButton.icon(
@@ -618,7 +624,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(10 * scale),
+          borderRadius: BorderRadius.circular(14 * scale),
           boxShadow: [
             BoxShadow(
               color: const Color.fromARGB(255, 30, 153, 234).withOpacity(0.35),
@@ -664,8 +670,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     final scale = _mediaScale(context);
 
     return GlassContainer(
-      blur: 10,
-      opacity: 0.06,
+      blur: 18,
+      opacity: 0.10,
       padding: EdgeInsets.all(_responsivePadding(context, 16)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -677,7 +683,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               context,
               size: 16,
               weight: FontWeight.bold,
-              color: kGlassBaseColor,
+              color: Colors.white,
             ),
           ),
           SizedBox(height: _responsivePadding(context, 12)),
@@ -698,17 +704,17 @@ class _HomePageState extends ConsumerState<HomePage> {
                     hintText: 'eg.123456789',
                     hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
                     filled: true,
-                    fillColor: kDarkBackgroundColor.withOpacity(0.4),
+                    fillColor: Colors.white.withOpacity(0.05),
                     prefixIcon: Icon(
                       Icons.chat_bubble,
-                      color: kAccentColor.withOpacity(0.7),
+                      color: kAccentColor.withOpacity(0.8),
                     ),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(color: kPrimaryColor, width: 1.5),
                     ),
                   ),
@@ -733,6 +739,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10 * scale),
                     ),
+                    elevation: 0,
                   ),
                   child: Text(
                     isSaved ? 'SAVED' : 'SAVE ID',
@@ -789,6 +796,65 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
+  Widget _buildAnimatedBackground(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
+    return AnimatedBuilder(
+      animation: _bgAnimation,
+      builder: (context, child) {
+        final t = _bgAnimation.value;
+
+        return Stack(
+          children: [
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [kDarkBackgroundColor, Color(0xFF1B2735)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            ),
+            Positioned(
+              top: -size.height * 0.25 + 30 * (t - 0.5),
+              left: -size.width * 0.4,
+              child: _HomeGlassBlob(
+                width: size.width * 1.0,
+                height: size.width * 1.0,
+                color: const Color(0xFF4F46E5).withOpacity(0.45),
+              ),
+            ),
+            Positioned(
+              bottom: -size.height * 0.28 - 24 * (t - 0.5),
+              right: -size.width * 0.35,
+              child: _HomeGlassBlob(
+                width: size.width * 1.1,
+                height: size.width * 1.1,
+                color: const Color(0xFF22D3EE).withOpacity(0.40),
+              ),
+            ),
+            Positioned(
+              top: size.height * 0.18 + 18 * (t - 0.5),
+              right: size.width * 0.18 + 10 * (0.5 - t),
+              child: _HomeDrop(
+                diameter: size.width * 0.20,
+                color: Colors.white.withOpacity(0.22),
+              ),
+            ),
+            Positioned(
+              bottom: size.height * 0.20 + 12 * (0.5 - t),
+              left: size.width * 0.22 + 12 * (t - 0.5),
+              child: _HomeDrop(
+                diameter: size.width * 0.16,
+                color: Colors.white.withOpacity(0.18),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUrl = ref.watch(urlProvider);
@@ -802,99 +868,145 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF212121),
-      appBar: AppBar(backgroundColor: kDarkBackgroundColor, elevation: 0),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [kDarkBackgroundColor, Color(0xFF212121)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+      body: Stack(
+        children: [
+          _buildAnimatedBackground(context),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final scale = _mediaScale(context);
+
+              final bool isTablet = width >= 700 && width < 1100;
+              final bool isLarge = width >= 1100;
+
+              final horizontalPadding = isLarge
+                  ? width * 0.12
+                  : (isTablet ? 40.0 : 24.0);
+              final verticalPadding = isTablet ? 80.0 : 36.0;
+
+              return SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: verticalPadding,
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: isLarge ? 1000 : (isTablet ? 900 : 620),
+                  ),
+                  child: isTablet || isLarge
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 1,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Icon(
+                                    Icons.upload_file,
+                                    size: 80 * scale,
+                                    color: Colors.white.withOpacity(0.9),
+                                  ),
+                                  SizedBox(height: 20 * scale),
+                                  _buildLinkCard(context, width),
+                                  SizedBox(height: 24 * scale),
+                                  _buildActionButton(context),
+                                  SizedBox(height: 24 * scale),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _buildTutorialButton(context),
+                                      ),
+                                      SizedBox(width: 12 * scale),
+                                      const Expanded(child: SizedBox.shrink()),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(width: 18 * scale),
+                            Expanded(
+                              flex: 1,
+                              child: Column(
+                                children: [_buildConfigPanel(context)],
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Icon(
+                              Icons.upload_file,
+                              size: 72 * scale,
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                            SizedBox(height: 20 * scale),
+                            _buildLinkCard(context, width),
+                            SizedBox(height: 20 * scale),
+                            _buildActionButton(context),
+                            SizedBox(height: 20 * scale),
+                            _buildConfigPanel(context),
+                            SizedBox(height: 16 * scale),
+                            _buildTutorialButton(context),
+                            SizedBox(height: 26 * scale),
+                          ],
+                        ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeGlassBlob extends StatelessWidget {
+  final double width;
+  final double height;
+  final Color color;
+
+  const _HomeGlassBlob({
+    required this.width,
+    required this.height,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+        child: Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(colors: [color, color.withOpacity(0.0)]),
           ),
         ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            final scale = _mediaScale(context);
+      ),
+    );
+  }
+}
 
-            final bool isTablet = width >= 700 && width < 1100;
-            final bool isLarge = width >= 1100;
+class _HomeDrop extends StatelessWidget {
+  final double diameter;
+  final Color color;
 
-            final horizontalPadding = isLarge
-                ? width * 0.12
-                : (isTablet ? 40.0 : 24.0);
-            final verticalPadding = isTablet ? 80.0 : 36.0;
+  const _HomeDrop({required this.diameter, required this.color});
 
-            return SingleChildScrollView(
-              padding: EdgeInsets.symmetric(
-                horizontal: horizontalPadding,
-                vertical: verticalPadding,
-              ),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: isLarge ? 1000 : (isTablet ? 900 : 620),
-                ),
-                child: isTablet || isLarge
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 1,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Icon(
-                                  Icons.upload_file,
-                                  size: 80 * scale,
-                                  color: kPrimaryColor,
-                                ),
-                                SizedBox(height: 20 * scale),
-                                _buildLinkCard(context, width),
-                                SizedBox(height: 24 * scale),
-                                _buildActionButton(context),
-                                SizedBox(height: 24 * scale),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _buildTutorialButton(context),
-                                    ),
-                                    SizedBox(width: 12 * scale),
-                                    const Expanded(child: SizedBox.shrink()),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(width: 18 * scale),
-                          Expanded(
-                            flex: 1,
-                            child: Column(
-                              children: [_buildConfigPanel(context)],
-                            ),
-                          ),
-                        ],
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Icon(
-                            Icons.upload_file,
-                            size: 72 * scale,
-                            color: kPrimaryColor,
-                          ),
-                          SizedBox(height: 20 * scale),
-                          _buildLinkCard(context, width),
-                          SizedBox(height: 20 * scale),
-                          _buildActionButton(context),
-                          SizedBox(height: 20 * scale),
-                          _buildConfigPanel(context),
-                          SizedBox(height: 16 * scale),
-                          _buildTutorialButton(context),
-                          SizedBox(height: 26 * scale),
-                        ],
-                      ),
-              ),
-            );
-          },
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          width: diameter,
+          height: diameter,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(colors: [color, color.withOpacity(0.0)]),
+          ),
         ),
       ),
     );

@@ -103,9 +103,10 @@ class _HomePageState extends ConsumerState<HomePage>
     _chatIdController = TextEditingController();
     _loadSavedChatId();
 
+    // Faster, more noticeable background motion
     _bgController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 16),
+      duration: const Duration(seconds: 10),
     )..repeat(reverse: true);
 
     _bgAnimation = CurvedAnimation(
@@ -581,23 +582,38 @@ class _HomePageState extends ConsumerState<HomePage>
           SizedBox(height: 12),
           SizedBox(
             height: 32 * scale,
-            child: ElevatedButton.icon(
-              onPressed: isDownloading ? _handleCancel : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isDownloading ? kPrimaryColor : Colors.grey,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(horizontal: 12 * scale),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10 * scale),
-                ),
-                elevation: 0,
-              ),
-              icon: Icon(Icons.close, size: 16 * scale),
-              label: Text(
-                'CANCEL',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12 * scale,
+            //TODO:
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10 * scale),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10 * scale),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.28),
+                      width: 1.0,
+                    ),
+                    color: Colors.white.withOpacity(
+                      isDownloading ? 0.12 : 0.06,
+                    ),
+                  ),
+                  child: TextButton.icon(
+                    onPressed: isDownloading ? _handleCancel : null,
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(horizontal: 12 * scale),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    icon: Icon(Icons.close, size: 16 * scale),
+                    label: Text(
+                      'CANCEL',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12 * scale,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -633,26 +649,55 @@ class _HomePageState extends ConsumerState<HomePage>
             ),
           ],
         ),
+        //TODO:
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: isLoading ? null : _handleDownload,
-            borderRadius: BorderRadius.circular(14 * scale),
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.send, size: 22 * scale, color: Colors.white),
-                  SizedBox(width: 12 * scale),
-                  Text(
-                    isLoading ? 'Downloading...' : 'Save to Telegram Bot',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14 * scale,
+            borderRadius: BorderRadius.circular(16 * scale),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16 * scale),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16 * scale),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.28),
+                      width: 1.0,
+                    ),
+                    color: Colors.white.withOpacity(isLoading ? 0.12 : 0.06),
+                  ),
+                  child: Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 18 * scale,
+                        vertical: 10 * scale,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.send,
+                            size: 22 * scale,
+                            color: Colors.white,
+                          ),
+                          SizedBox(width: 12 * scale),
+                          Text(
+                            isLoading
+                                ? 'Downloading...'
+                                : 'Save to Telegram Bot',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14 * scale,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -693,6 +738,7 @@ class _HomePageState extends ConsumerState<HomePage>
                 child: TextField(
                   controller: _chatIdController,
                   keyboardType: TextInputType.number,
+
                   style: _responsiveTextStyle(
                     context,
                     size: 14,
@@ -730,22 +776,35 @@ class _HomePageState extends ConsumerState<HomePage>
               SizedBox(width: 10 * scale),
               SizedBox(
                 height: 48 * scale,
-                child: ElevatedButton(
-                  onPressed: canSave ? _saveChatId : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isSaved ? Colors.grey : kPrimaryColor,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 12 * scale),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10 * scale),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: Text(
-                    isSaved ? 'SAVED' : 'SAVE ID',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13 * scale,
+                //TODO:
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10 * scale),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10 * scale),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.26),
+                          width: 1.0,
+                        ),
+                        color: Colors.white.withOpacity(canSave ? 0.12 : 0.06),
+                      ),
+                      child: TextButton(
+                        onPressed: canSave ? _saveChatId : null,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(horizontal: 12 * scale),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          isSaved ? 'SAVED' : 'SAVE ID',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13 * scale,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -816,7 +875,7 @@ class _HomePageState extends ConsumerState<HomePage>
               ),
             ),
             Positioned(
-              top: -size.height * 0.25 + 30 * (t - 0.5),
+              top: -size.height * 0.25 + 40 * (t - 0.5),
               left: -size.width * 0.4,
               child: _HomeGlassBlob(
                 width: size.width * 1.0,
@@ -825,7 +884,7 @@ class _HomePageState extends ConsumerState<HomePage>
               ),
             ),
             Positioned(
-              bottom: -size.height * 0.28 - 24 * (t - 0.5),
+              bottom: -size.height * 0.28 - 36 * (t - 0.5),
               right: -size.width * 0.35,
               child: _HomeGlassBlob(
                 width: size.width * 1.1,
@@ -834,16 +893,16 @@ class _HomePageState extends ConsumerState<HomePage>
               ),
             ),
             Positioned(
-              top: size.height * 0.18 + 18 * (t - 0.5),
-              right: size.width * 0.18 + 10 * (0.5 - t),
+              top: size.height * 0.18 + 26 * (t - 0.5),
+              right: size.width * 0.18 + 14 * (0.5 - t),
               child: _HomeDrop(
                 diameter: size.width * 0.20,
                 color: Colors.white.withOpacity(0.22),
               ),
             ),
             Positioned(
-              bottom: size.height * 0.20 + 12 * (0.5 - t),
-              left: size.width * 0.22 + 12 * (t - 0.5),
+              bottom: size.height * 0.20 + 20 * (0.5 - t),
+              left: size.width * 0.22 + 16 * (t - 0.5),
               child: _HomeDrop(
                 diameter: size.width * 0.16,
                 color: Colors.white.withOpacity(0.18),
@@ -868,93 +927,99 @@ class _HomePageState extends ConsumerState<HomePage>
 
     return Scaffold(
       backgroundColor: const Color(0xFF212121),
+      // AppBar removed – keep content layout identical using padding.
       body: Stack(
         children: [
           _buildAnimatedBackground(context),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth;
-              final scale = _mediaScale(context);
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final scale = _mediaScale(context);
 
-              final bool isTablet = width >= 700 && width < 1100;
-              final bool isLarge = width >= 1100;
+                final bool isTablet = width >= 700 && width < 1100;
+                final bool isLarge = width >= 1100;
 
-              final horizontalPadding = isLarge
-                  ? width * 0.12
-                  : (isTablet ? 40.0 : 24.0);
-              final verticalPadding = isTablet ? 80.0 : 36.0;
+                final horizontalPadding = isLarge
+                    ? width * 0.12
+                    : (isTablet ? 40.0 : 24.0);
+                final verticalPadding = isTablet ? 80.0 : 36.0;
 
-              return SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: verticalPadding,
-                ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: isLarge ? 1000 : (isTablet ? 900 : 620),
+                return SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: horizontalPadding,
+                    vertical: verticalPadding,
                   ),
-                  child: isTablet || isLarge
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              flex: 1,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  Icon(
-                                    Icons.upload_file,
-                                    size: 80 * scale,
-                                    color: Colors.white.withOpacity(0.9),
-                                  ),
-                                  SizedBox(height: 20 * scale),
-                                  _buildLinkCard(context, width),
-                                  SizedBox(height: 24 * scale),
-                                  _buildActionButton(context),
-                                  SizedBox(height: 24 * scale),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: _buildTutorialButton(context),
-                                      ),
-                                      SizedBox(width: 12 * scale),
-                                      const Expanded(child: SizedBox.shrink()),
-                                    ],
-                                  ),
-                                ],
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: isLarge ? 1000 : (isTablet ? 900 : 620),
+                    ),
+                    child: isTablet || isLarge
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 1,
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Icon(
+                                      Icons.upload_file,
+                                      size: 80 * scale,
+                                      color: Colors.white.withOpacity(0.9),
+                                    ),
+                                    SizedBox(height: 20 * scale),
+                                    _buildLinkCard(context, width),
+                                    SizedBox(height: 24 * scale),
+                                    _buildActionButton(context),
+                                    SizedBox(height: 24 * scale),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: _buildTutorialButton(context),
+                                        ),
+                                        SizedBox(width: 12 * scale),
+                                        const Expanded(
+                                          child: SizedBox.shrink(),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            SizedBox(width: 18 * scale),
-                            Expanded(
-                              flex: 1,
-                              child: Column(
-                                children: [_buildConfigPanel(context)],
+                              SizedBox(width: 18 * scale),
+                              Expanded(
+                                flex: 1,
+                                child: Column(
+                                  children: [_buildConfigPanel(context)],
+                                ),
                               ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Icon(
-                              Icons.upload_file,
-                              size: 72 * scale,
-                              color: Colors.white.withOpacity(0.9),
-                            ),
-                            SizedBox(height: 20 * scale),
-                            _buildLinkCard(context, width),
-                            SizedBox(height: 20 * scale),
-                            _buildActionButton(context),
-                            SizedBox(height: 20 * scale),
-                            _buildConfigPanel(context),
-                            SizedBox(height: 16 * scale),
-                            _buildTutorialButton(context),
-                            SizedBox(height: 26 * scale),
-                          ],
-                        ),
-                ),
-              );
-            },
+                            ],
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Icon(
+                                Icons.upload_file,
+                                size: 72 * scale,
+                                color: Colors.white.withOpacity(0.9),
+                              ),
+                              SizedBox(height: 20 * scale),
+                              _buildLinkCard(context, width),
+                              SizedBox(height: 20 * scale),
+                              _buildActionButton(context),
+                              SizedBox(height: 20 * scale),
+                              _buildConfigPanel(context),
+                              SizedBox(height: 16 * scale),
+                              _buildTutorialButton(context),
+                              SizedBox(height: 26 * scale),
+                            ],
+                          ),
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),

@@ -8,8 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:video_downloader/firebase_options.dart';
-import 'package:video_downloader/screens/home_page.dart';
-import 'package:video_downloader/screens/maintenance_screen.dart';
 import 'package:video_downloader/screens/splash_screen.dart';
 import 'package:video_downloader/services/notification_service.dart';
 import 'package:window_size/window_size.dart';

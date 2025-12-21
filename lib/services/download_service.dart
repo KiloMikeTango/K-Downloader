@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -21,13 +22,11 @@ class DownloadService {
 
   // Expose cancel method
   void cancelActiveOperation() {
-    // Cancel Dio tasks (TikTok/Facebook download or Telegram upload).[web:94][web:95][web:96]
     _currentDioCancelToken?.cancel('User cancelled');
-    // Cancel YouTube streaming download
     _youtubeCancelRequested = true;
   }
 
-  // ⭐️ Filename sanitization
+  // Filename sanitization
   String _sanitizeTitle(String title) {
     final illegalCharsRegex = RegExp(r'[<>:"/\\|?*]|\.$');
     String safeTitle = title.replaceAll(illegalCharsRegex, '_');
@@ -74,7 +73,6 @@ class DownloadService {
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
         if (kDebugMode) print('HTTP download cancelled: ${e.message}');
-        // Propagate a specific cancel exception upwards
         throw Exception('CANCELLED');
       }
       rethrow;
@@ -279,17 +277,16 @@ class DownloadService {
   }
 
   // --- 4. SAVE TO TELEGRAM BOT with upload progress + cancel ---
+  // caption can be null or empty => bot will send no caption
   Future<void> saveToBot(
     String tempFilePath,
     String botToken,
     String chatId,
-    DownloadProgressCallback? onProgress,
-  ) async {
+    DownloadProgressCallback? onProgress, {
+    String? caption,
+  }) async {
     final file = File(tempFilePath);
     final fileName = file.path.split('/').last;
-    final captionName = fileName.replaceAll('.mp4', '');
-
-    final String finalCaption = captionName;
 
     if (!await file.exists()) {
       throw Exception('Temporary video file was not found.');
@@ -301,12 +298,18 @@ class DownloadService {
     try {
       final apiUrl = 'https://api.telegram.org/bot$botToken/sendVideo';
 
-      final formData = FormData.fromMap({
+      final Map<String, dynamic> fields = {
         'chat_id': chatId,
-        'caption': finalCaption,
         'video': await MultipartFile.fromFile(tempFilePath, filename: fileName),
         'supports_streaming': true,
-      });
+      };
+
+      // Only add caption if non-empty, Telegram treats caption as optional.[web:221][web:241]
+      if (caption != null && caption.trim().isNotEmpty) {
+        fields['caption'] = caption.trim();
+      }
+
+      final formData = FormData.fromMap(fields);
 
       await _dio.post(
         apiUrl,
@@ -327,7 +330,6 @@ class DownloadService {
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
         if (kDebugMode) print('Telegram upload cancelled: ${e.message}');
-        // Don't show error toast for cancel; propagate special exception.
         throw Exception('CANCELLED');
       }
       if (await file.exists()) {

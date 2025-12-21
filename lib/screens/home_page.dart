@@ -1,46 +1,10 @@
-import 'dart:io';
 import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
-import 'package:http/http.dart' as http;
 import 'package:video_downloader/constant.dart';
+import 'package:video_downloader/controller/home_controller.dart';
 import 'package:video_downloader/screens/tutorial_page.dart';
-import 'package:video_downloader/services/download_service.dart';
-import 'package:video_downloader/services/database_service.dart';
-import 'package:video_downloader/secrets.dart';
-
-enum TransferPhase { idle, downloading, uploading }
-
-final transferPhaseProvider =
-    StateNotifierProvider<StateController<TransferPhase>, TransferPhase>(
-      (ref) => StateController(TransferPhase.idle),
-    );
-
-final downloadProgressProvider =
-    StateNotifierProvider<StateController<double>, double>(
-      (ref) => StateController(0.0),
-    );
-
-// --- State Providers ---
-final urlProvider = StateProvider<String>((ref) => '');
-final tokenProvider = StateProvider<String>((ref) => kBotToken);
-final chatIdProvider = StateProvider<String>((ref) => '');
-final loadingProvider = StateNotifierProvider<StateController<bool>, bool>(
-  (ref) => StateController(false),
-);
-final messageProvider = StateNotifierProvider<StateController<String>, String>(
-  (ref) => StateController(''),
-);
-final downloadServiceProvider = Provider((ref) => DownloadService());
-final databaseServiceProvider = Provider((ref) => DatabaseService());
-final isChatIdSavedProvider = StateProvider<bool>((ref) => false);
-
-// thumbnail URL for preview (YouTube + TikTok only)
-final thumbnailUrlProvider =
-    StateNotifierProvider<StateController<String?>, String?>(
-      (ref) => StateController<String?>(null),
-    );
 
 // --- Glass Container Widget ---
 class GlassContainer extends StatelessWidget {
@@ -92,18 +56,24 @@ class _HomePageState extends ConsumerState<HomePage>
     with TickerProviderStateMixin {
   late final TextEditingController _urlController;
   late final TextEditingController _chatIdController;
+  late final TextEditingController _captionController;
 
   late final AnimationController _bgController;
   late final Animation<double> _bgAnimation;
+  late final HomeController _controller;
 
   @override
   void initState() {
     super.initState();
     _urlController = TextEditingController();
     _chatIdController = TextEditingController();
-    _loadSavedChatId();
+    _captionController = TextEditingController();
+    _controller = HomeController(ref);
 
-    // Faster, more noticeable background motion
+    _controller.loadSavedChatId(
+      onLoadedToController: (value) => _chatIdController.text = value,
+    );
+
     _bgController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
@@ -119,257 +89,9 @@ class _HomePageState extends ConsumerState<HomePage>
   void dispose() {
     _urlController.dispose();
     _chatIdController.dispose();
+    _captionController.dispose();
     _bgController.dispose();
     super.dispose();
-  }
-
-  String _cleanYoutubeUrl(String url) {
-    if (!(url.contains('youtu.be') || url.contains('youtube.com'))) {
-      return url;
-    }
-    final queryIndex = url.indexOf('?');
-    if (queryIndex != -1) {
-      return url.substring(0, queryIndex);
-    }
-    return url;
-  }
-
-  Future<void> _loadSavedChatId() async {
-    final savedId = await ref.read(databaseServiceProvider).getChatId();
-    if (savedId != null && savedId.isNotEmpty) {
-      ref.read(chatIdProvider.notifier).state = savedId;
-      _chatIdController.text = savedId;
-      ref.read(isChatIdSavedProvider.notifier).state = true;
-    }
-  }
-
-  void _saveChatId() async {
-    final chatId = _chatIdController.text.trim();
-    if (chatId.isEmpty) {
-      ref.read(messageProvider.notifier).state = 'Chat ID ထည့်ရန်လိုအပ်ပါသည်။';
-      return;
-    }
-    try {
-      await ref.read(databaseServiceProvider).saveChatId(chatId);
-      ref.read(chatIdProvider.notifier).state = chatId;
-      ref.read(isChatIdSavedProvider.notifier).state = true;
-      ref.read(messageProvider.notifier).state = 'Chat ID သိမ်းပြီးပါပြီ။';
-    } catch (e) {
-      ref.read(messageProvider.notifier).state = 'Chat ID သိမ်း၍မရပါ။';
-    }
-  }
-
-  String _getLinkType(String url) {
-    if (url.contains('youtu.be') || url.contains('youtube.com')) {
-      return 'youtube';
-    }
-    if (url.contains('facebook.com') || url.contains('fb.watch')) {
-      return 'facebook';
-    }
-    if (url.contains('tiktok.com') || url.contains('vt.tiktok.com')) {
-      return 'tiktok';
-    }
-    return 'invalid';
-  }
-
-  // --- Thumbnail helpers (YouTube + TikTok) ---
-
-  String? _extractYoutubeId(String url) {
-    try {
-      final uri = Uri.parse(url);
-
-      if (uri.host.contains('youtu.be')) {
-        if (uri.pathSegments.isNotEmpty) {
-          return uri.pathSegments.first;
-        }
-      }
-
-      if (uri.host.contains('youtube.com')) {
-        final vParam = uri.queryParameters['v'];
-        if (vParam != null && vParam.isNotEmpty) {
-          return vParam;
-        }
-
-        if (uri.pathSegments.isNotEmpty &&
-            uri.pathSegments.first == 'shorts' &&
-            uri.pathSegments.length >= 2) {
-          return uri.pathSegments[1];
-        }
-      }
-
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  String? _buildYoutubeThumbnail(String url) {
-    final id = _extractYoutubeId(url);
-    if (id == null || id.isEmpty) return null;
-    return 'https://i3.ytimg.com/vi/$id/hqdefault.jpg';
-  }
-
-  Future<String> _resolveTiktokUrl(String url) async {
-    try {
-      final client = http.Client();
-      try {
-        final request = http.Request('GET', Uri.parse(url))
-          ..followRedirects = false;
-        final response = await client.send(request);
-
-        if (response.isRedirect ||
-            response.statusCode == 301 ||
-            response.statusCode == 302) {
-          final location = response.headers['location'];
-          if (location != null && location.isNotEmpty) {
-            return location;
-          }
-        }
-
-        return url;
-      } finally {
-        client.close();
-      }
-    } catch (_) {
-      return url;
-    }
-  }
-
-  Future<String?> _fetchTiktokThumbnail(String url) async {
-    final resolvedUrl = await _resolveTiktokUrl(url);
-    final encoded = Uri.encodeComponent(resolvedUrl);
-    final oembedUrl = 'https://www.tiktok.com/oembed?url=$encoded';
-
-    try {
-      final res = await http.get(Uri.parse(oembedUrl));
-      if (res.statusCode != 200) return null;
-
-      final body = res.body;
-      final key = '"thumbnail_url":"';
-      final start = body.indexOf(key);
-      if (start == -1) return null;
-      final from = start + key.length;
-      final end = body.indexOf('"', from);
-      if (end == -1) return null;
-      final raw = body.substring(from, end);
-      return raw.replaceAll(r'\/', '/');
-    } catch (_) {
-      return null;
-    }
-  }
-
-  void _updateThumbnailForUrl(String url) {
-    final type = _getLinkType(url);
-
-    if (type == 'youtube') {
-      final thumb = _buildYoutubeThumbnail(url);
-      ref.read(thumbnailUrlProvider.notifier).state = thumb;
-      return;
-    }
-
-    if (type == 'tiktok') {
-      ref.read(thumbnailUrlProvider.notifier).state = null;
-      _fetchTiktokThumbnail(url).then((thumb) {
-        if (!mounted) return;
-        if (ref.read(urlProvider) == url) {
-          ref.read(thumbnailUrlProvider.notifier).state = thumb;
-        }
-      });
-      return;
-    }
-
-    ref.read(thumbnailUrlProvider.notifier).state = null;
-  }
-
-  void _handleDownload() async {
-    final url = ref.read(urlProvider);
-    final service = ref.read(downloadServiceProvider);
-
-    final linkType = _getLinkType(url);
-    if (linkType == 'invalid') {
-      ref.read(messageProvider.notifier).state = 'လင့်မထည့်ရသေးပါ။';
-      return;
-    }
-
-    ref.read(downloadProgressProvider.notifier).state = 0.0;
-    ref.read(transferPhaseProvider.notifier).state = TransferPhase.downloading;
-    ref.read(loadingProvider.notifier).state = true;
-    ref.read(messageProvider.notifier).state = 'Download လုပ်နေပါသည်...';
-    String? tempFilePath;
-
-    try {
-      final token = ref.read(tokenProvider);
-      final chatId = ref.read(chatIdProvider);
-
-      if (token.isEmpty || chatId.isEmpty) {
-        throw Exception('Chat ID မထည့်ရသေးပါ။');
-      }
-
-      void onDownloadProgress(double p) {
-        ref.read(downloadProgressProvider.notifier).state = p;
-      }
-
-      if (linkType == 'youtube') {
-        final cleanUrl = _cleanYoutubeUrl(url);
-        tempFilePath = await service.downloadVideo(
-          cleanUrl,
-          onProgress: onDownloadProgress,
-        );
-      } else if (linkType == 'facebook') {
-        tempFilePath = await service.downloadFacebookVideo(
-          url,
-          onProgress: onDownloadProgress,
-        );
-      } else if (linkType == 'tiktok') {
-        tempFilePath = await service.downloadTiktokVideo(
-          url,
-          onProgress: onDownloadProgress,
-        );
-      }
-
-      ref.read(downloadProgressProvider.notifier).state = 1.0;
-
-      ref.read(transferPhaseProvider.notifier).state = TransferPhase.uploading;
-      ref.read(downloadProgressProvider.notifier).state = 0.0;
-      ref.read(messageProvider.notifier).state =
-          'Telegram သို့ Video ပို့နေပါသည်...';
-
-      void onUploadProgress(double p) {
-        ref.read(downloadProgressProvider.notifier).state = p;
-      }
-
-      await service.saveToBot(tempFilePath!, token, chatId, onUploadProgress);
-
-      ref.read(downloadProgressProvider.notifier).state = 1.0;
-      ref.read(messageProvider.notifier).state =
-          'Telegram သို့ Video ပို့ပြီးပါပြီ။';
-      _urlController.clear();
-      ref.read(thumbnailUrlProvider.notifier).state = null;
-    } catch (e) {
-      final msg = e.toString();
-      if (msg.contains('CANCELLED')) {
-        ref.read(messageProvider.notifier).state =
-            'Download ရပ်ဆိုင်းလိုက်ပါပြီ။';
-      } else {
-        ref.read(messageProvider.notifier).state = 'Error: $msg';
-      }
-
-      if (tempFilePath != null && await File(tempFilePath).exists()) {
-        await File(tempFilePath).delete();
-      }
-      _urlController.clear();
-      ref.read(thumbnailUrlProvider.notifier).state = null;
-    } finally {
-      ref.read(urlProvider.notifier).state = '';
-      ref.read(loadingProvider.notifier).state = false;
-      ref.read(transferPhaseProvider.notifier).state = TransferPhase.idle;
-      ref.read(downloadProgressProvider.notifier).state = 0.0;
-    }
-  }
-
-  void _handleCancel() {
-    final service = ref.read(downloadServiceProvider);
-    service.cancelActiveOperation();
   }
 
   double _mediaScale(BuildContext context) {
@@ -395,64 +117,84 @@ class _HomePageState extends ConsumerState<HomePage>
 
   Widget _buildThumbnailPreview(BuildContext context) {
     final thumbnailUrl = ref.watch(thumbnailUrlProvider);
-    if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
+    final caption = ref.watch(videoCaptionProvider);
+    final scale = _mediaScale(context);
+
+    if ((thumbnailUrl == null || thumbnailUrl.isEmpty) &&
+        (caption == null || caption.isEmpty)) {
       return const SizedBox.shrink();
     }
 
-    final scale = _mediaScale(context);
     final radius = 14 * scale;
-
     final screenWidth = MediaQuery.of(context).size.width;
     final maxWidth = (screenWidth * 0.8).clamp(220.0, 480.0);
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(height: _responsivePadding(context, 16.5)),
-        Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxWidth),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(radius + 2),
-                border: Border.all(
-                  color: const Color.fromARGB(255, 254, 107, 54),
-                  width: 1.5,
-                ),
-              ),
+        if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
+          Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(radius),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: Image.network(
-                    thumbnailUrl,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        color: Colors.black26,
-                        child: const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: Colors.black26,
-                        child: Center(
-                          child: Icon(
-                            Icons.broken_image_outlined,
-                            color: Colors.white54,
-                            size: 28 * scale,
-                          ),
-                        ),
-                      );
-                    },
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(radius),
+                      color: Colors.white.withOpacity(0.06),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.25),
+                        width: 1.0,
+                      ),
+                    ),
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Image.network(
+                        thumbnailUrl,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            color: Colors.black26,
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.black26,
+                            child: Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: Colors.white54,
+                                size: 28 * scale,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
+        if (caption != null && caption.isNotEmpty) ...[
+          SizedBox(height: _responsivePadding(context, 10)),
+          Text(
+            caption,
+            textAlign: TextAlign.left,
+            style: _responsiveTextStyle(
+              context,
+              size: 14,
+              color: Colors.white.withOpacity(0.9),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -462,23 +204,16 @@ class _HomePageState extends ConsumerState<HomePage>
     final message = ref.watch(messageProvider);
     final progress = ref.watch(downloadProgressProvider);
     final phase = ref.watch(transferPhaseProvider);
+    final saveWithCaption = ref.watch(saveWithCaptionProvider);
 
     final percent = (progress * 100).clamp(0, 100).toInt();
 
     final isDownloading = phase == TransferPhase.downloading;
-    final isUploading = phase == TransferPhase.uploading;
-
-    String phaseLabel;
-    switch (phase) {
-      case TransferPhase.downloading:
-        phaseLabel = 'Downloading: $percent%';
-        break;
-      case TransferPhase.uploading:
-        phaseLabel = 'Sending to Telegram: $percent%';
-        break;
-      default:
-        phaseLabel = '';
-    }
+    final String phaseLabel = switch (phase) {
+      TransferPhase.downloading => 'Downloading: $percent%',
+      TransferPhase.uploading => 'Sending to Telegram: $percent%',
+      _ => '',
+    };
 
     final scale = _mediaScale(context);
 
@@ -490,6 +225,7 @@ class _HomePageState extends ConsumerState<HomePage>
         vertical: _responsivePadding(context, 20),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TextField(
             controller: _urlController,
@@ -530,16 +266,42 @@ class _HomePageState extends ConsumerState<HomePage>
               ),
             ),
             onChanged: (value) {
-              final cleanedValue = _cleanYoutubeUrl(value);
-              if (cleanedValue != value) {
-                _urlController.text = cleanedValue;
+              final cleaned = _controller.cleanYoutubeUrl(value);
+              if (cleaned != value) {
+                _urlController.text = cleaned;
                 _urlController.selection = TextSelection.fromPosition(
-                  TextPosition(offset: cleanedValue.length),
+                  TextPosition(offset: cleaned.length),
                 );
               }
-              ref.read(urlProvider.notifier).state = cleanedValue;
-              _updateThumbnailForUrl(cleanedValue);
+              ref.read(urlProvider.notifier).state = cleaned;
+              _controller.updateThumbnailForUrl(cleaned);
             },
+          ),
+          SizedBox(height: _responsivePadding(context, 8)),
+          Row(
+            children: [
+              Checkbox(
+                value: saveWithCaption,
+                onChanged: isLoading
+                    ? null
+                    : (value) {
+                        ref.read(saveWithCaptionProvider.notifier).state =
+                            value ?? true;
+                      },
+                activeColor: kPrimaryColor,
+                checkColor: Colors.white,
+              ),
+              Expanded(
+                child: Text(
+                  'Save with caption',
+                  style: _responsiveTextStyle(
+                    context,
+                    size: 13.5,
+                    color: Colors.white.withOpacity(0.85),
+                  ),
+                ),
+              ),
+            ],
           ),
           _buildThumbnailPreview(context),
           SizedBox(height: _responsivePadding(context, 15)),
@@ -549,7 +311,7 @@ class _HomePageState extends ConsumerState<HomePage>
               value: progress > 0 ? progress : null,
               minHeight: 4,
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Align(
               alignment: Alignment.center,
               child: Text(
@@ -579,10 +341,9 @@ class _HomePageState extends ConsumerState<HomePage>
                   : Colors.white,
             ),
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           SizedBox(
             height: 32 * scale,
-            //TODO:
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10 * scale),
               child: BackdropFilter(
@@ -599,7 +360,11 @@ class _HomePageState extends ConsumerState<HomePage>
                     ),
                   ),
                   child: TextButton.icon(
-                    onPressed: isDownloading ? _handleCancel : null,
+                    onPressed: isDownloading
+                        ? () => _controller.handleCancel(
+                            ref.read(downloadServiceProvider),
+                          )
+                        : null,
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.white,
                       padding: EdgeInsets.symmetric(horizontal: 12 * scale),
@@ -629,72 +394,44 @@ class _HomePageState extends ConsumerState<HomePage>
 
     return SizedBox(
       height: 50 * scale,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [
-              Color.fromARGB(255, 23, 94, 192),
-              Color.fromARGB(255, 38, 94, 212),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(14 * scale),
-          boxShadow: [
-            BoxShadow(
-              color: const Color.fromARGB(255, 30, 153, 234).withOpacity(0.35),
-              blurRadius: 18 * scale,
-              offset: Offset(0, 6 * scale),
-            ),
-          ],
-        ),
-        //TODO:
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: isLoading ? null : _handleDownload,
-            borderRadius: BorderRadius.circular(16 * scale),
-            child: ClipRRect(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16 * scale),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Container(
+            decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16 * scale),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16 * scale),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.28),
-                      width: 1.0,
+              border: Border.all(
+                color: Colors.white.withOpacity(0.28),
+                width: 1.0,
+              ),
+              color: Colors.white.withOpacity(isLoading ? 0.12 : 0.06),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: isLoading ? null : _controller.handleDownload,
+                borderRadius: BorderRadius.circular(16 * scale),
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 18 * scale,
+                      vertical: 10 * scale,
                     ),
-                    color: Colors.white.withOpacity(isLoading ? 0.12 : 0.06),
-                  ),
-                  child: Center(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 18 * scale,
-                        vertical: 10 * scale,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.send,
-                            size: 22 * scale,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.send, size: 22 * scale, color: Colors.white),
+                        SizedBox(width: 12 * scale),
+                        Text(
+                          isLoading ? 'Downloading...' : 'Save to Telegram Bot',
+                          style: TextStyle(
                             color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14 * scale,
                           ),
-                          SizedBox(width: 12 * scale),
-                          Text(
-                            isLoading
-                                ? 'Downloading...'
-                                : 'Save to Telegram Bot',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14 * scale,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -712,6 +449,7 @@ class _HomePageState extends ConsumerState<HomePage>
     final bool isModified = _chatIdController.text.trim() != currentChatId;
     final bool canSave =
         _chatIdController.text.trim().isNotEmpty && (isModified || !isSaved);
+    final isLoading = ref.watch(loadingProvider);
     final scale = _mediaScale(context);
 
     return GlassContainer(
@@ -736,9 +474,9 @@ class _HomePageState extends ConsumerState<HomePage>
             children: [
               Expanded(
                 child: TextField(
+                  enabled: !isLoading,
                   controller: _chatIdController,
                   keyboardType: TextInputType.number,
-
                   style: _responsiveTextStyle(
                     context,
                     size: 14,
@@ -776,7 +514,6 @@ class _HomePageState extends ConsumerState<HomePage>
               SizedBox(width: 10 * scale),
               SizedBox(
                 height: 48 * scale,
-                //TODO:
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(10 * scale),
                   child: BackdropFilter(
@@ -791,7 +528,10 @@ class _HomePageState extends ConsumerState<HomePage>
                         color: Colors.white.withOpacity(canSave ? 0.12 : 0.06),
                       ),
                       child: TextButton(
-                        onPressed: canSave ? _saveChatId : null,
+                        onPressed: (!isLoading && canSave)
+                            ? () =>
+                                  _controller.saveChatId(_chatIdController.text)
+                            : null,
                         style: TextButton.styleFrom(
                           foregroundColor: Colors.white,
                           padding: EdgeInsets.symmetric(horizontal: 12 * scale),
@@ -918,7 +658,7 @@ class _HomePageState extends ConsumerState<HomePage>
   Widget build(BuildContext context) {
     final currentUrl = ref.watch(urlProvider);
 
-    if (currentUrl.isNotEmpty && _urlController.text != currentUrl) {
+    if (_urlController.text != currentUrl) {
       _urlController.text = currentUrl;
       _urlController.selection = TextSelection.fromPosition(
         TextPosition(offset: _urlController.text.length),
@@ -927,7 +667,6 @@ class _HomePageState extends ConsumerState<HomePage>
 
     return Scaffold(
       backgroundColor: const Color(0xFF212121),
-      // AppBar removed – keep content layout identical using padding.
       body: Stack(
         children: [
           _buildAnimatedBackground(context),

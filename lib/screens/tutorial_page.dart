@@ -1,12 +1,12 @@
+import 'dart:ui';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_downloader/constant.dart';
 
 class TutorialPage extends StatelessWidget {
   const TutorialPage({super.key});
-
-  static const Color _darkBg = Color(0xFF0E0F12);
-  static const Color _textColor = Colors.white70;
 
   double _scale(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
@@ -24,22 +24,25 @@ class TutorialPage extends StatelessWidget {
     return TextStyle(
       fontSize: size * s,
       fontWeight: weight,
-      color: color,
+      color: color ?? Colors.white.withOpacity(0.85),
       height: height,
     );
   }
 
   EdgeInsets _responsivePagePadding(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    if (width >= 700)
+    if (width >= 700) {
       return const EdgeInsets.symmetric(horizontal: 70, vertical: 25);
+    }
     return const EdgeInsets.symmetric(horizontal: 16, vertical: 16);
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = _scale(context);
+
     return Scaffold(
-      backgroundColor: _darkBg,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -54,129 +57,256 @@ class TutorialPage extends StatelessWidget {
             color: Colors.white,
           ),
         ),
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [kDarkBackgroundColor, Colors.black12],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
-          ),
-        ),
-      ),
-
-      body: ListView(
-        padding: _responsivePagePadding(context),
-        children: [
-          _instructionBox(
-            context: context,
-            number: "1",
-            text: "Chat ID ယူရန် Telegram Bot ထဲကိုသွားပါ။",
-            imagePath: "assets/step1.png",
-            buttonText: "@InstantChatIDBot (နှိပ်ပါ)",
-            buttonAction: () async {
-              final url = Uri.parse("https://t.me/InstantChatIDBot");
-
-              await launchUrl(url, mode: LaunchMode.externalApplication);
-            },
-          ),
-
-          const SizedBox(height: 18),
-
-          _instructionBox(
-            context: context,
-            number: "2",
-            text: "ID ကို Copy ယူပါ။",
-            imagePath: "assets/step2.png",
-          ),
-
-          const SizedBox(height: 18),
-
-          _instructionBox(
-            context: context,
-            number: "3",
-            text: "Telegram Bot ကို Start လုပ်ပါ။",
-            imagePath: "assets/step3.png",
-            buttonText: "@kmt_vidownloader_bot (နှိပ်ပါ)",
-            buttonAction: () async {
-              final Uri url = Uri.parse('https://t.me/kmt_vidownloader_bot');
-              await launchUrl(url, mode: LaunchMode.externalApplication);
-            },
-          ),
-
-          const SizedBox(height: 18),
-
-          _instructionBox(
-            context: context,
-            number: "4",
-            text: "Copy ယူလာတဲ့ ID ကိုထည့်ပါ။",
-            imagePath: "assets/step4.png",
-          ),
-
-          const SizedBox(height: 30),
-        ],
-      ),
-    );
-  }
-
-  Widget _instructionBox({
-    required BuildContext context,
-    required String number,
-    required String text,
-    required String imagePath,
-    String? buttonText,
-    VoidCallback? buttonAction,
-  }) {
-    final scale = _scale(context);
-
-    return Container(
-      padding: EdgeInsets.all(16 * scale),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(14 * scale),
-        border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "$number. $text",
-            style: _responsiveText(context, size: 15, color: _textColor),
-          ),
-
-          SizedBox(height: 10 * scale),
-
-          if (buttonText != null && buttonAction != null)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: buttonAction,
-                style: TextButton.styleFrom(foregroundColor: kAccentColor),
-                child: Text(
-                  buttonText,
-                  style: _responsiveText(
-                    context,
-                    size: 17,
-                    color: kAccentColor,
+        flexibleSpace: ClipRRect(
+          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.white.withOpacity(0.12),
+                    Colors.white.withOpacity(0.04),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.white.withOpacity(0.30),
+                    width: 0.8,
                   ),
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: _responsivePagePadding(context),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24 * s),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.white.withOpacity(0.07),
+                      Colors.white.withOpacity(0.02),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24 * s),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.26),
+                    width: 1,
+                  ),
+                ),
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('tutorialSteps')
+                      .orderBy('order')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      );
+                    }
 
-          SizedBox(height: 10 * scale),
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text(
+                            'Tutorial is not available right now.',
+                            textAlign: TextAlign.center,
+                            style: _responsiveText(
+                              context,
+                              size: 15,
+                              color: Colors.redAccent,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
 
-          Center(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8 * scale),
-              child: Image.asset(
-                imagePath,
-                width: double.infinity,
-                fit: BoxFit.contain,
+                    final docs = snapshot.data?.docs ?? [];
+                    if (docs.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Text(
+                            'Tutorial steps မရှိသေးပါ။',
+                            textAlign: TextAlign.center,
+                            style: _responsiveText(context, size: 14),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ListView.separated(
+                      padding: EdgeInsets.all(18 * s),
+                      itemCount: docs.length,
+                      separatorBuilder: (_, __) => SizedBox(height: 18 * s),
+                      itemBuilder: (context, index) {
+                        final data =
+                            docs[index].data() as Map<String, dynamic>? ?? {};
+                        final text = data['text'] as String? ?? '';
+                        final imageUrl = data['imageUrl'] as String? ?? '';
+                        final buttonText = data['buttonText'] as String?;
+                        final buttonUrl = data['buttonUrl'] as String?;
+
+                        return _instructionGlassCard(
+                          context: context,
+                          index: index,
+                          text: text,
+                          imageUrl: imageUrl,
+                          buttonText: buttonText,
+                          buttonUrl: buttonUrl,
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
             ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _instructionGlassCard({
+    required BuildContext context,
+    required int index,
+    required String text,
+    required String imageUrl,
+    String? buttonText,
+    String? buttonUrl,
+  }) {
+    final scale = _scale(context);
+    final stepNumber = index + 1;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18 * scale),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          padding: EdgeInsets.all(16 * scale),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withOpacity(0.09),
+                Colors.white.withOpacity(0.03),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18 * scale),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.26),
+              width: 1.0,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$stepNumber. $text',
+                style: _responsiveText(
+                  context,
+                  size: 15,
+                ),
+              ),
+              SizedBox(height: 10 * scale),
+              if (buttonText != null &&
+                  buttonText.isNotEmpty &&
+                  buttonUrl != null &&
+                  buttonUrl.isNotEmpty)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: () async {
+                      final uri = Uri.tryParse(buttonUrl);
+                      if (uri != null) {
+                        await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                        );
+                      }
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: kAccentColor,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8 * scale,
+                        vertical: 4 * scale,
+                      ),
+                    ),
+                    child: Text(
+                      buttonText,
+                      style: _responsiveText(
+                        context,
+                        size: 15,
+                        color: kAccentColor,
+                      ),
+                    ),
+                  ),
+                ),
+              SizedBox(height: 10 * scale),
+              if (imageUrl.isNotEmpty)
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(14 * scale),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14 * scale),
+                          color: Colors.white.withOpacity(0.06),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.30),
+                            width: 1.0,
+                          ),
+                        ),
+                        child: AspectRatio(
+                          aspectRatio: 9 / 16,
+                          child: Image.network(
+                            imageUrl,
+                            fit: BoxFit.contain,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return Container(
+                                color: Colors.black26,
+                                child: const Center(
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: Colors.black26,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: Colors.white54,
+                                    size: 24 * scale,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

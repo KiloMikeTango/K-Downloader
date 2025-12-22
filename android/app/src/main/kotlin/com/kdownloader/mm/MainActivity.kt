@@ -1,4 +1,4 @@
-package com.example.video_downloader
+package com.kdownloader.mm
 
 import io.flutter.embedding.android.FlutterActivity
 

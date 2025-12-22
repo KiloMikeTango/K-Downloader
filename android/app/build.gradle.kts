@@ -11,7 +11,7 @@ plugins {
 android {
     compileSdk = 36
     ndkVersion = "29.0.14206865"
-    namespace = "com.example.video_downloader"
+    namespace = "com.kdownloader.mm"
     compileOptions {
         isCoreLibraryDesugaringEnabled = true  // ← Fixed with 'is' prefix
         sourceCompatibility = JavaVersion.VERSION_11
@@ -22,7 +22,7 @@ android {
     }
     defaultConfig {
         // TODO: Specify your own unique Application ID[](https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.video_downloader"
+        applicationId = "com.kdownloader.mm"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

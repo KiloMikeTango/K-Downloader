@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart'; // Needed for kIsWeb and defaultTargetPlatform
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // NEW
+import 'package:shared_preferences/shared_preferences.dart';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();

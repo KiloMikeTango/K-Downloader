@@ -1,3 +1,4 @@
+
 # Miscellaneous
 *.class
 *.log
@@ -45,5 +46,7 @@ app.*.map.json
 /android/app/release
 
 # Secrets
-lib/secrets.dart
+*.json
+*firebase_options.dart
+*secrets.dart
 .env

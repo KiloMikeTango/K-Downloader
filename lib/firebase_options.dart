@@ -23,9 +23,15 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        return ios;
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for ios - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
       case TargetPlatform.macOS:
-        return macos;
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for macos - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
       case TargetPlatform.windows:
         return windows;
       case TargetPlatform.linux:
@@ -42,47 +48,32 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyC-6e8hRt_MdbJnsmvfMkI8IXlUXsyjdC0',
-    appId: '1:524411589574:web:18f81c99f03e60aed6d8c7',
+    appId: '1:524411589574:web:b6a910fdd5fde3c3d6d8c7',
     messagingSenderId: '524411589574',
     projectId: 'video-downloader-admin',
     authDomain: 'video-downloader-admin.firebaseapp.com',
+    databaseURL: 'https://video-downloader-admin-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'video-downloader-admin.firebasestorage.app',
-    measurementId: 'G-WQ1TT4GV9K',
+    measurementId: 'G-YMBQEBXDMT',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyC3ZOi1vygNaYLe3NpcjQ2iAqU7yTqr904',
-    appId: '1:524411589574:android:ee1fa5e45ef8c51fd6d8c7',
+    appId: '1:524411589574:android:3ce879a1fecc3097d6d8c7',
     messagingSenderId: '524411589574',
     projectId: 'video-downloader-admin',
+    databaseURL: 'https://video-downloader-admin-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'video-downloader-admin.firebasestorage.app',
-  );
-
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBEBeh2p40xklrcGgS4nrQ6UsQZ894HcO8',
-    appId: '1:524411589574:ios:fa65a15495ed0673d6d8c7',
-    messagingSenderId: '524411589574',
-    projectId: 'video-downloader-admin',
-    storageBucket: 'video-downloader-admin.firebasestorage.app',
-    iosBundleId: 'com.example.videoDownloader',
-  );
-
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyBEBeh2p40xklrcGgS4nrQ6UsQZ894HcO8',
-    appId: '1:524411589574:ios:fa65a15495ed0673d6d8c7',
-    messagingSenderId: '524411589574',
-    projectId: 'video-downloader-admin',
-    storageBucket: 'video-downloader-admin.firebasestorage.app',
-    iosBundleId: 'com.example.videoDownloader',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
     apiKey: 'AIzaSyC-6e8hRt_MdbJnsmvfMkI8IXlUXsyjdC0',
-    appId: '1:524411589574:web:08bd5596b4d41773d6d8c7',
+    appId: '1:524411589574:web:42bfb96665f3c1acd6d8c7',
     messagingSenderId: '524411589574',
     projectId: 'video-downloader-admin',
     authDomain: 'video-downloader-admin.firebaseapp.com',
+    databaseURL: 'https://video-downloader-admin-default-rtdb.asia-southeast1.firebasedatabase.app',
     storageBucket: 'video-downloader-admin.firebasestorage.app',
-    measurementId: 'G-J76S5681X6',
+    measurementId: 'G-04GVWM8FRJ',
   );
 }

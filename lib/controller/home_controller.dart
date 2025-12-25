@@ -1,19 +1,20 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:http/http.dart' as http;
 import 'package:video_downloader/services/download_service.dart';
 import 'package:video_downloader/services/database_service.dart';
 import 'package:video_downloader/secrets.dart';
+import '../services/stats_service.dart';
 
 // --- Enums & Providers ---
 
 enum TransferPhase { idle, downloading, uploading }
 
-
-
+final statsServiceProvider = Provider((ref) => StatsService());
 final transferPhaseProvider =
     StateNotifierProvider<StateController<TransferPhase>, TransferPhase>(
       (ref) => StateController(TransferPhase.idle),
@@ -69,7 +70,7 @@ class HomeController {
     final token = (snap.data()?['botToken'] ?? '') as String;
     ref.read(tokenProvider.notifier).state = token;
   }
- 
+
   String cleanYoutubeUrl(String url) {
     if (!(url.contains('youtu.be') || url.contains('youtube.com'))) {
       return url;
@@ -95,16 +96,16 @@ class HomeController {
   Future<void> saveChatId(String value) async {
     final chatId = value.trim();
     if (chatId.isEmpty) {
-      ref.read(messageProvider.notifier).state = 'Chat ID ထည့်ရန်လိုအပ်ပါသည်။';
+      ref.read(messageProvider.notifier).state = "msg_need_chatid".tr();
       return;
     }
     try {
       await ref.read(databaseServiceProvider).saveChatId(chatId);
       ref.read(chatIdProvider.notifier).state = chatId;
       ref.read(isChatIdSavedProvider.notifier).state = true;
-      ref.read(messageProvider.notifier).state = 'Chat ID သိမ်းပြီးပါပြီ။';
+      ref.read(messageProvider.notifier).state = 'msg_saved_chatid'.tr();
     } catch (_) {
-      ref.read(messageProvider.notifier).state = 'Chat ID သိမ်း၍မရပါ။';
+      ref.read(messageProvider.notifier).state = 'msg_error_chatid_save.'.tr();
     }
   }
 
@@ -194,7 +195,7 @@ class HomeController {
   Future<String?> fetchTiktokThumbnail(String url) async {
     final resolvedUrl = await _resolveTiktokUrl(url);
     final encoded = Uri.encodeComponent(resolvedUrl);
-    final oembedUrl = 'https://www.tiktok.com/oembed?url=$encoded';
+    final oembedUrl = "$tiktokEncoded$encoded";
 
     try {
       final res = await http.get(Uri.parse(oembedUrl));
@@ -247,14 +248,14 @@ class HomeController {
 
     final linkType = getLinkType(url);
     if (linkType == 'invalid') {
-      ref.read(messageProvider.notifier).state = 'လင့်မထည့်ရသေးပါ။';
+      ref.read(messageProvider.notifier).state = "msg_no_link".tr();
       return;
     }
 
     ref.read(downloadProgressProvider.notifier).state = 0.0;
     ref.read(transferPhaseProvider.notifier).state = TransferPhase.downloading;
     ref.read(loadingProvider.notifier).state = true;
-    ref.read(messageProvider.notifier).state = 'Download လုပ်နေပါသည်...';
+    ref.read(messageProvider.notifier).state = "msg_downloading".tr();
     String? tempFilePath;
 
     try {
@@ -264,7 +265,7 @@ class HomeController {
       final userCaption = ref.read(videoCaptionProvider);
 
       if (token.isEmpty || chatId.isEmpty) {
-        throw Exception('Chat ID မထည့်ရသေးပါ။');
+        throw Exception("msg_error_chat_id".tr());
       }
 
       void onDownloadProgress(double p) {
@@ -294,7 +295,7 @@ class HomeController {
       ref.read(transferPhaseProvider.notifier).state = TransferPhase.uploading;
       ref.read(downloadProgressProvider.notifier).state = 0.0;
       ref.read(messageProvider.notifier).state =
-          'Telegram သို့ Video ပို့နေပါသည်...';
+          "msg_uploading".tr();
 
       void onUploadProgress(double p) {
         ref.read(downloadProgressProvider.notifier).state = p;
@@ -327,7 +328,14 @@ class HomeController {
 
       ref.read(downloadProgressProvider.notifier).state = 1.0;
       ref.read(messageProvider.notifier).state =
-          'Telegram သို့ Video ပို့ပြီးပါပြီ။';
+          "msg_successed".tr();
+
+      try {
+        final linkType = getLinkType(url);
+        await ref.read(statsServiceProvider).incrementPlatform(linkType);
+      } catch (_) {
+        // ignore analytics errors
+      }
 
       // clear UI state
       ref.read(thumbnailUrlProvider.notifier).state = null;
@@ -335,16 +343,27 @@ class HomeController {
       ref.read(urlProvider.notifier).state = '';
     } catch (e) {
       final msg = e.toString();
+
+      String userMessage;
+
       if (msg.contains('CANCELLED')) {
-        ref.read(messageProvider.notifier).state =
-            'Download ရပ်ဆိုင်းလိုက်ပါပြီ။';
+        userMessage = "msg_error_cancelled".tr();
+      } else if (msg.contains('Chat ID')) {
+        userMessage = "msg_error_chat_id".tr();
+      } else if (msg.contains('Network') || msg.contains('SocketException')) {
+        userMessage = "msg_error_network".tr();
+      } else if (msg.contains('TikTok') || msg.contains('Facebook')) {
+        userMessage = "msg_error_unknown".tr();
       } else {
-        ref.read(messageProvider.notifier).state = 'Error: $msg';
+        userMessage = "msg_error_unknown".tr();
       }
+
+      ref.read(messageProvider.notifier).state = userMessage;
 
       if (tempFilePath != null && await File(tempFilePath).exists()) {
         await File(tempFilePath).delete();
       }
+
       ref.read(thumbnailUrlProvider.notifier).state = null;
       ref.read(videoCaptionProvider.notifier).state = null;
       ref.read(urlProvider.notifier).state = '';

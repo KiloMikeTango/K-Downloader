@@ -27,11 +27,16 @@ dependencies:
   firebase_remote_config: ^5.5.0
   cloud_firestore: ^5.6.12
   change_app_package_name: ^1.5.0
+  easy_localization: ^3.0.8
   
 dev_dependencies:
+  android_notification_icons:
+  
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+android_notification_icons:
+  image_path: assets/icon/ic_notification.png  
 
   
 
@@ -40,6 +45,7 @@ flutter:
   assets: 
    - assets/.
    - assets/icon/.
+   - assets/translations/
 
      
 

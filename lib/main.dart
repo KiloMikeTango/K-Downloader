@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,9 +11,17 @@ import 'firebase_options.dart'; // if you use FlutterFire CLI
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await EasyLocalization.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await initPush();
-  runApp(const ProviderScope(child: KDownloaderApp()));
+  runApp(
+    EasyLocalization(
+      supportedLocales: const [Locale('en', 'EN'), Locale('my', 'MM')],
+      path: 'assets/translations',
+      fallbackLocale: const Locale('en', 'EN'),
+      child: ProviderScope(child: const KDownloaderApp()),
+    ),
+  );
 }
 
 class KDownloaderApp extends StatelessWidget {
@@ -21,6 +30,10 @@ class KDownloaderApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      locale: context.locale,
+      supportedLocales: context.supportedLocales,
+      localizationsDelegates: context.localizationDelegates,
+
       title: 'K Downloader',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),

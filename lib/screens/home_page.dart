@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_downloader/constant.dart';
@@ -238,7 +239,7 @@ class _HomePageState extends ConsumerState<HomePage>
             ),
             decoration: InputDecoration(
               labelText: 'Youtube or Tiktok Link',
-              hintText: 'လင့်ထည့်ရန်...',
+              hintText: 'Link',
               hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
               labelStyle: TextStyle(color: Colors.white.withOpacity(0.75)),
               filled: true,
@@ -293,7 +294,7 @@ class _HomePageState extends ConsumerState<HomePage>
               ),
               Expanded(
                 child: Text(
-                  'Save with caption',
+                  "label_save_with_caption".tr(),
                   style: _responsiveTextStyle(
                     context,
                     size: 13.5,
@@ -328,7 +329,7 @@ class _HomePageState extends ConsumerState<HomePage>
           ],
           SizedBox(height: _responsivePadding(context, 5.5)),
           Text(
-            message.isEmpty ? 'လင့်ထည့်ပါ...' : message,
+            message.isEmpty ? '' : message,
             textAlign: TextAlign.center,
             style: _responsiveTextStyle(
               context,
@@ -424,7 +425,7 @@ class _HomePageState extends ConsumerState<HomePage>
                         Icon(Icons.send, size: 22 * scale, color: Colors.white),
                         SizedBox(width: 12 * scale),
                         Text(
-                          isLoading ? 'Downloading...' : 'Save to Telegram Bot',
+                          isLoading ? 'Downloading...' : "btn_download".tr(),
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -460,7 +461,7 @@ class _HomePageState extends ConsumerState<HomePage>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Chat ID ထည့်ရန်',
+            "chatid_card_title".tr(),
             textAlign: TextAlign.center,
             style: _responsiveTextStyle(
               context,
@@ -585,7 +586,7 @@ class _HomePageState extends ConsumerState<HomePage>
         ),
       ),
       child: Text(
-        'ဘယ်လိုသုံးရမလဲ?',
+        "how_to_use".tr(),
         style: TextStyle(
           color: kPrimaryColor,
           fontSize: 15 * scale,
@@ -752,7 +753,30 @@ class _HomePageState extends ConsumerState<HomePage>
                               _buildConfigPanel(context),
                               SizedBox(height: 16 * scale),
                               _buildTutorialButton(context),
-                              SizedBox(height: 26 * scale),
+                              SizedBox(height: 13.5 * scale),
+                              Column(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.language,
+                                      color: Colors.white,
+                                    ),
+                                    onPressed: () {
+                                      final current = context.locale;
+                                      if (current.languageCode == 'en') {
+                                        context.setLocale(
+                                          const Locale('my', 'MM'),
+                                        );
+                                      } else {
+                                        context.setLocale(
+                                          const Locale('en', 'EN'),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                  Text('language'.tr()),
+                                ],
+                              ),
                             ],
                           ),
                   ),

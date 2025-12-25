@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:http/http.dart' as http;
@@ -10,6 +11,8 @@ import 'package:video_downloader/secrets.dart';
 // --- Enums & Providers ---
 
 enum TransferPhase { idle, downloading, uploading }
+
+
 
 final transferPhaseProvider =
     StateNotifierProvider<StateController<TransferPhase>, TransferPhase>(
@@ -58,7 +61,15 @@ class HomeController {
   HomeController(this.ref);
 
   // --- URL / Chat ID helpers ---
-
+  Future<void> loadBotToken() async {
+    final snap = await FirebaseFirestore.instance
+        .collection('app_config')
+        .doc('token')
+        .get();
+    final token = (snap.data()?['botToken'] ?? '') as String;
+    ref.read(tokenProvider.notifier).state = token;
+  }
+ 
   String cleanYoutubeUrl(String url) {
     if (!(url.contains('youtu.be') || url.contains('youtube.com'))) {
       return url;

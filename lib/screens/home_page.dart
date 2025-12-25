@@ -69,7 +69,7 @@ class _HomePageState extends ConsumerState<HomePage>
     _chatIdController = TextEditingController();
     _captionController = TextEditingController();
     _controller = HomeController(ref);
-
+    _controller.loadBotToken();
     _controller.loadSavedChatId(
       onLoadedToController: (value) => _chatIdController.text = value,
     );

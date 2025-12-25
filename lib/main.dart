@@ -2,16 +2,16 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:video_downloader/core/push_init.dart';
 import 'package:video_downloader/screens/maintenance_screen.dart';
 import 'package:video_downloader/screens/splash_screen.dart';
 import 'core/maintenance_service.dart';
-import 'screens/home_page.dart';
 import 'firebase_options.dart'; // if you use FlutterFire CLI
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
+  await initPush();
   runApp(const ProviderScope(child: KDownloaderApp()));
 }
 

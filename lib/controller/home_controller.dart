@@ -14,16 +14,20 @@ import '../services/stats_service.dart';
 
 enum TransferPhase { idle, downloading, uploading }
 
+// New: what to download
+enum DownloadMode { video, audio, both }
+
 final statsServiceProvider = Provider((ref) => StatsService());
+
 final transferPhaseProvider =
     StateNotifierProvider<StateController<TransferPhase>, TransferPhase>(
-      (ref) => StateController(TransferPhase.idle),
-    );
+  (ref) => StateController(TransferPhase.idle),
+);
 
 final downloadProgressProvider =
     StateNotifierProvider<StateController<double>, double>(
-      (ref) => StateController(0.0),
-    );
+  (ref) => StateController(0.0),
+);
 
 final urlProvider = StateProvider<String>((ref) => '');
 final tokenProvider = StateProvider<String>((ref) => kBotToken);
@@ -38,23 +42,28 @@ final downloadServiceProvider = Provider((ref) => DownloadService());
 final databaseServiceProvider = Provider((ref) => DatabaseService());
 final isChatIdSavedProvider = StateProvider<bool>((ref) => false);
 
+// New: Download mode provider (default video)
+final downloadModeProvider = StateProvider<DownloadMode>(
+  (ref) => DownloadMode.video,
+);
+
 // Thumbnail URL
 final thumbnailUrlProvider =
     StateNotifierProvider<StateController<String?>, String?>(
-      (ref) => StateController<String?>(null),
-    );
+  (ref) => StateController<String?>(null),
+);
 
 // Video caption from platform (raw, will be cleaned before send)
 final videoCaptionProvider =
     StateNotifierProvider<StateController<String?>, String?>(
-      (ref) => StateController<String?>(null),
-    );
+  (ref) => StateController<String?>(null),
+);
 
 // Save with caption flag
 final saveWithCaptionProvider =
     StateNotifierProvider<StateController<bool>, bool>(
-      (ref) => StateController<bool>(true),
-    );
+  (ref) => StateController<bool>(true),
+);
 
 class HomeController {
   final WidgetRef ref;
@@ -105,7 +114,8 @@ class HomeController {
       ref.read(isChatIdSavedProvider.notifier).state = true;
       ref.read(messageProvider.notifier).state = 'msg_saved_chatid'.tr();
     } catch (_) {
-      ref.read(messageProvider.notifier).state = 'msg_error_chatid_save.'.tr();
+      ref.read(messageProvider.notifier).state =
+          'msg_error_chatid_save.'.tr();
     }
   }
 
@@ -124,7 +134,6 @@ class HomeController {
 
   // --- Caption cleaning helpers ---
 
-  // Clear caption on URL change
   void clearCaption() {
     ref.read(videoCaptionProvider.notifier).state = null;
   }
@@ -218,7 +227,6 @@ class HomeController {
   void updateThumbnailForUrl(String url) {
     final type = getLinkType(url);
 
-    // Invalidate caption when URL changes
     clearCaption();
 
     if (type == 'youtube') {
@@ -252,11 +260,18 @@ class HomeController {
       return;
     }
 
+    final mode = ref.read(downloadModeProvider);
+
+    // fresh run: reset flags + UI
+    service.resetCancelFlags();
     ref.read(downloadProgressProvider.notifier).state = 0.0;
-    ref.read(transferPhaseProvider.notifier).state = TransferPhase.downloading;
+    ref.read(transferPhaseProvider.notifier).state =
+        TransferPhase.downloading;
     ref.read(loadingProvider.notifier).state = true;
     ref.read(messageProvider.notifier).state = "msg_downloading".tr();
-    String? tempFilePath;
+
+    String? tempVideoPath;
+    String? tempAudioPath;
 
     try {
       final token = ref.read(tokenProvider);
@@ -269,75 +284,117 @@ class HomeController {
       }
 
       void onDownloadProgress(double p) {
-        ref.read(downloadProgressProvider.notifier).state = p;
+        ref.read(downloadProgressProvider.notifier).state =
+            p.clamp(0.0, 1.0);
       }
 
+      // ---- DOWNLOAD PHASE ----
       if (linkType == 'youtube') {
-        // use URL as-is, no clean
-        tempFilePath = await service.downloadVideo(
+        // Always download muxed video first.
+        tempVideoPath = await service.downloadVideo(
           url,
           onProgress: onDownloadProgress,
         );
+
+        if (mode == DownloadMode.audio || mode == DownloadMode.both) {
+          // Extract MP3 from downloaded video.
+          ref.read(downloadProgressProvider.notifier).state = 0.0;
+          tempAudioPath = await service.extractMp3FromVideo(tempVideoPath);
+
+          // If user selected Audio only, discard the video to save space.
+          if (mode == DownloadMode.audio &&
+              tempVideoPath != null &&
+              await File(tempVideoPath).exists()) {
+            await File(tempVideoPath).delete();
+            tempVideoPath = null;
+          }
+        }
       } else if (linkType == 'facebook') {
-        tempFilePath = await service.downloadFacebookVideo(
+        tempVideoPath = await service.downloadFacebookVideo(
           url,
           onProgress: onDownloadProgress,
         );
       } else if (linkType == 'tiktok') {
-        tempFilePath = await service.downloadTiktokVideo(
+        tempVideoPath = await service.downloadTiktokVideo(
           url,
           onProgress: onDownloadProgress,
         );
       }
 
+      if (tempVideoPath == null && tempAudioPath == null) {
+        throw Exception('No media downloaded for this URL / mode.');
+      }
+
       ref.read(downloadProgressProvider.notifier).state = 1.0;
 
-      ref.read(transferPhaseProvider.notifier).state = TransferPhase.uploading;
+      // ---- UPLOAD PHASE ----
+      ref.read(transferPhaseProvider.notifier).state =
+          TransferPhase.uploading;
       ref.read(downloadProgressProvider.notifier).state = 0.0;
-      ref.read(messageProvider.notifier).state =
-          "msg_uploading".tr();
 
       void onUploadProgress(double p) {
-        ref.read(downloadProgressProvider.notifier).state = p;
+        ref.read(downloadProgressProvider.notifier).state =
+            p.clamp(0.0, 1.0);
       }
 
-      // Build caption value for the service:
-      // - Checkbox OFF -> captionToSend = null (no caption field).
-      // - Checkbox ON:
-      //    - Prefer platform/user caption (videoCaptionProvider),
-      //    - Fallback to filename without .mp4.
-      String? captionToSend;
-      if (saveWithCaption) {
+      String? buildCaptionFromFile(String? path) {
+        if (!saveWithCaption) return null;
         if (userCaption != null && userCaption.trim().isNotEmpty) {
-          captionToSend = userCaption.trim();
-        } else if (tempFilePath != null) {
-          final name = tempFilePath.split('/').last;
-          captionToSend = name.replaceAll('.mp4', '');
+          return userCaption.trim();
         }
-      } else {
-        captionToSend = null;
+        if (path != null) {
+          final name = path.split('/').last;
+          return name
+              .replaceAll('.mp4', '')
+              .replaceAll('.m4a', '')
+              .replaceAll('.mp3', '');
+        }
+        return null;
       }
 
-      await service.saveToBot(
-        tempFilePath!,
-        token,
-        chatId,
-        onUploadProgress,
-        caption: captionToSend,
-      );
+      final isBoth = mode == DownloadMode.both;
+
+      // Video first (if any)
+      if (tempVideoPath != null) {
+        ref.read(messageProvider.notifier).state =
+            isBoth ? "Uploading video..." : "msg_uploading".tr();
+        final captionToSend = buildCaptionFromFile(tempVideoPath);
+        await service.saveToBot(
+          tempVideoPath,
+          token,
+          chatId,
+          onUploadProgress,
+          caption: captionToSend,
+        );
+      }
+
+      // Audio second (if any)
+      if (tempAudioPath != null) {
+        ref.read(downloadProgressProvider.notifier).state = 0.0;
+        ref.read(messageProvider.notifier).state =
+            isBoth ? "Uploading audio..." : "msg_uploading".tr();
+        final captionToSend = buildCaptionFromFile(tempAudioPath);
+        await service.saveAudioToBot(
+          tempAudioPath,
+          token,
+          chatId,
+          onUploadProgress,
+          caption: captionToSend,
+        );
+      }
 
       ref.read(downloadProgressProvider.notifier).state = 1.0;
-      ref.read(messageProvider.notifier).state =
-          "msg_successed".tr();
+      ref.read(messageProvider.notifier).state = "msg_successed".tr();
 
       try {
-        final linkType = getLinkType(url);
-        await ref.read(statsServiceProvider).incrementPlatform(linkType);
+        final linkTypeValue = getLinkType(url);
+        await ref
+            .read(statsServiceProvider)
+            .incrementPlatform(linkTypeValue);
       } catch (_) {
         // ignore analytics errors
       }
 
-      // clear UI state
       ref.read(thumbnailUrlProvider.notifier).state = null;
       ref.read(videoCaptionProvider.notifier).state = null;
       ref.read(urlProvider.notifier).state = '';
@@ -345,23 +402,24 @@ class HomeController {
       final msg = e.toString();
 
       String userMessage;
-
       if (msg.contains('CANCELLED')) {
         userMessage = "msg_error_cancelled".tr();
       } else if (msg.contains('Chat ID')) {
         userMessage = "msg_error_chat_id".tr();
-      } else if (msg.contains('Network') || msg.contains('SocketException')) {
+      } else if (msg.contains('Network') ||
+          msg.contains('SocketException')) {
         userMessage = "msg_error_network".tr();
-      } else if (msg.contains('TikTok') || msg.contains('Facebook')) {
-        userMessage = "msg_error_unknown".tr();
       } else {
-        userMessage = "msg_error_unknown".tr();
+        userMessage = "msg_error_unknown".tr() + ' ($msg)';
       }
 
       ref.read(messageProvider.notifier).state = userMessage;
 
-      if (tempFilePath != null && await File(tempFilePath).exists()) {
-        await File(tempFilePath).delete();
+      if (tempVideoPath != null && await File(tempVideoPath).exists()) {
+        await File(tempVideoPath).delete();
+      }
+      if (tempAudioPath != null && await File(tempAudioPath).exists()) {
+        await File(tempAudioPath).delete();
       }
 
       ref.read(thumbnailUrlProvider.notifier).state = null;
@@ -374,7 +432,13 @@ class HomeController {
     }
   }
 
-  void handleCancel(DownloadService service) {
+  void handleCancel() {
+    final service = ref.read(downloadServiceProvider);
     service.cancelActiveOperation();
+
+    ref.read(messageProvider.notifier).state = "msg_error_cancelled".tr();
+    ref.read(transferPhaseProvider.notifier).state = TransferPhase.idle;
+    ref.read(loadingProvider.notifier).state = false;
+    ref.read(downloadProgressProvider.notifier).state = 0.0;
   }
 }

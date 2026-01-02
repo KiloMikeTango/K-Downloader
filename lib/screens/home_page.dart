@@ -200,12 +200,45 @@ class _HomePageState extends ConsumerState<HomePage>
     );
   }
 
+  Widget _buildModeChip(
+    BuildContext context, {
+    required String label,
+    required bool selected,
+    required double scale,
+  }) {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: _responsivePadding(context, 7)),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999 * scale),
+        color: selected
+            ? kPrimaryColor.withOpacity(0.22)
+            : Colors.white.withOpacity(0.05),
+        border: Border.all(
+          color: selected ? kPrimaryColor : Colors.white.withOpacity(0.25),
+          width: 1.0,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          label,
+          style: _responsiveTextStyle(
+            context,
+            size: 13,
+            weight: FontWeight.w600,
+            color: Colors.white.withOpacity(selected ? 0.98 : 0.8),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildLinkCard(BuildContext context, double width) {
     final isLoading = ref.watch(loadingProvider);
     final message = ref.watch(messageProvider);
     final progress = ref.watch(downloadProgressProvider);
     final phase = ref.watch(transferPhaseProvider);
     final saveWithCaption = ref.watch(saveWithCaptionProvider);
+    final mode = ref.watch(downloadModeProvider);
 
     final percent = (progress * 100).clamp(0, 100).toInt();
 
@@ -217,6 +250,10 @@ class _HomePageState extends ConsumerState<HomePage>
     };
 
     final scale = _mediaScale(context);
+
+    final isVideo = mode == DownloadMode.video;
+    final isAudio = mode == DownloadMode.audio;
+    final isBoth = mode == DownloadMode.both;
 
     return GlassContainer(
       blur: 18,
@@ -277,6 +314,65 @@ class _HomePageState extends ConsumerState<HomePage>
               ref.read(urlProvider.notifier).state = cleaned;
               _controller.updateThumbnailForUrl(cleaned);
             },
+          ),
+          SizedBox(height: _responsivePadding(context, 8)),
+          // Download type selector
+          Text(
+            "Download as",
+            style: _responsiveTextStyle(
+              context,
+              size: 12,
+              color: Colors.white.withOpacity(0.7),
+            ),
+          ),
+          SizedBox(height: 6 * scale),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: isLoading
+                      ? null
+                      : () => ref.read(downloadModeProvider.notifier).state =
+                            DownloadMode.video,
+                  child: _buildModeChip(
+                    context,
+                    label: "Video",
+                    selected: isVideo,
+                    scale: scale,
+                  ),
+                ),
+              ),
+              SizedBox(width: 6 * scale),
+              Expanded(
+                child: GestureDetector(
+                  onTap: isLoading
+                      ? null
+                      : () => ref.read(downloadModeProvider.notifier).state =
+                            DownloadMode.audio,
+                  child: _buildModeChip(
+                    context,
+                    label: "Audio",
+                    selected: isAudio,
+                    scale: scale,
+                  ),
+                ),
+              ),
+              SizedBox(width: 6 * scale),
+              Expanded(
+                child: GestureDetector(
+                  onTap: isLoading
+                      ? null
+                      : () => ref.read(downloadModeProvider.notifier).state =
+                            DownloadMode.both,
+                  child: _buildModeChip(
+                    context,
+                    label: "Both",
+                    selected: isBoth,
+                    scale: scale,
+                  ),
+                ),
+              ),
+            ],
           ),
           SizedBox(height: _responsivePadding(context, 8)),
           Row(
@@ -361,11 +457,9 @@ class _HomePageState extends ConsumerState<HomePage>
                     ),
                   ),
                   child: TextButton.icon(
-                    onPressed: isDownloading
-                        ? () => _controller.handleCancel(
-                            ref.read(downloadServiceProvider),
-                          )
-                        : null,
+                  onPressed: isDownloading ? _controller.handleCancel : null,
+
+
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.white,
                       padding: EdgeInsets.symmetric(horizontal: 12 * scale),

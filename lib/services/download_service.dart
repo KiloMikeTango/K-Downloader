@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:ffmpeg_kit_flutter_new_https/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_https/return_code.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_downloader/secrets.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
-import 'package:http/http.dart' as http;
 
 /// Signature for progress callback: value in range 0.0–1.0.
 /// Will be called multiple times while downloading or uploading, and 1.0 at the end.
@@ -19,6 +21,12 @@ class DownloadService {
   // Current active cancel tokens / flags
   CancelToken? _currentDioCancelToken;
   bool _youtubeCancelRequested = false;
+
+  // Reset cancel flags for a fresh run
+  void resetCancelFlags() {
+    _youtubeCancelRequested = false;
+    _currentDioCancelToken = null;
+  }
 
   // Expose cancel method
   void cancelActiveOperation() {
@@ -49,7 +57,9 @@ class DownloadService {
     final dir = await getTemporaryDirectory();
     final filePath = '${dir.path}/$fileName';
 
-    if (kDebugMode) print('Starting HTTP download to: $filePath');
+    if (kDebugMode) {
+      print('Starting HTTP download to: $filePath');
+    }
 
     final cancelToken = CancelToken();
     _currentDioCancelToken = cancelToken;
@@ -72,7 +82,10 @@ class DownloadService {
       );
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
-        if (kDebugMode) print('HTTP download cancelled: ${e.message}');
+        if (kDebugMode) {
+          print('HTTP download cancelled: ${e.message}');
+        }
+        // Propagate a specific cancel exception upwards
         throw Exception('CANCELLED');
       }
       rethrow;
@@ -80,10 +93,7 @@ class DownloadService {
       _currentDioCancelToken = null;
     }
 
-    if (onProgress != null) {
-      onProgress(1.0);
-    }
-
+    onProgress?.call(1.0);
     return filePath;
   }
 
@@ -136,7 +146,9 @@ class DownloadService {
         'Check your Wi‑Fi/data connection and app permissions.',
       );
     } catch (e) {
-      if (kDebugMode) print('SCRAPING/UNKNOWN ERROR: $e');
+      if (kDebugMode) {
+        print('SCRAPING/UNKNOWN ERROR: $e');
+      }
       throw Exception(
         'Failed to download Facebook video: An error occurred during scraping.',
       );
@@ -164,13 +176,17 @@ class DownloadService {
           );
         }
 
-        if (kDebugMode) print('TikTok Download URL received.');
+        if (kDebugMode) {
+          print('TikTok Download URL received.');
+        }
         return {'url': downloadUrl as String, 'title': title as String};
       }
       throw Exception('TikTok API failed with status: ${response.statusCode}');
     } on DioException catch (e) {
       final responseData = e.response?.data;
-      if (kDebugMode) print('TikTok API Error: $responseData');
+      if (kDebugMode) {
+        print('TikTok API Error: $responseData');
+      }
       throw Exception(
         'Failed to fetch TikTok link: ${responseData?['msg'] ?? e.message}',
       );
@@ -181,7 +197,7 @@ class DownloadService {
     }
   }
 
-  // --- 1. YOUTUBE DOWNLOAD with real-time progress + cancel ---
+  // --- 1. YOUTUBE DOWNLOAD (video with audio) with real-time progress + cancel ---
   Future<String> downloadVideo(
     String url, {
     DownloadProgressCallback? onProgress,
@@ -212,7 +228,9 @@ class DownloadService {
     try {
       await for (final data in videoStream) {
         if (_youtubeCancelRequested) {
-          if (kDebugMode) print('YouTube download cancelled by user');
+          if (kDebugMode) {
+            print('YouTube download cancelled by user');
+          }
           await fileStream.close();
           if (await file.exists()) {
             await file.delete();
@@ -230,10 +248,7 @@ class DownloadService {
       }
 
       await fileStream.close();
-      if (onProgress != null) {
-        onProgress(1.0);
-      }
-
+      onProgress?.call(1.0);
       return filePath;
     } catch (e) {
       await fileStream.close();
@@ -244,6 +259,35 @@ class DownloadService {
     } finally {
       _youtubeCancelRequested = false;
     }
+  }
+
+  // --- Extract MP3 audio from a downloaded video (YouTube muxed, Facebook, TikTok, etc.) ---
+  Future<String> extractMp3FromVideo(String inputVideoPath) async {
+    final inputFile = File(inputVideoPath);
+    if (!await inputFile.exists()) {
+      throw Exception('Video file for audio extraction not found.');
+    }
+
+    final dir = await getTemporaryDirectory();
+    final baseName = inputVideoPath.split('/').last.replaceAll('.mp4', '');
+    // use m4a container + AAC codec (widely available in non‑GPL builds)
+    final outputPath = '${dir.path}/$baseName.m4a';
+
+    // -vn: no video, -c:a aac: use AAC encoder
+    final command = '-i "$inputVideoPath" -vn -c:a aac -b:a 192k "$outputPath"';
+    final session = await FFmpegKit.execute(command);
+    final returnCode = await session.getReturnCode();
+
+    if (ReturnCode.isSuccess(returnCode)) {
+      if (!await File(outputPath).exists()) {
+        throw Exception('Audio output file was not created.');
+      }
+      return outputPath;
+    }
+
+    final logs = await session.getAllLogs();
+    final logText = logs.map((e) => e.getMessage()).join('\n');
+    throw Exception('Failed to extract audio. FFmpeg error: $logText');
   }
 
   // --- 2. FACEBOOK DOWNLOAD with real-time progress + cancel ---
@@ -276,8 +320,7 @@ class DownloadService {
     return _httpDownloadToFile(directUrl, fileName, onProgress: onProgress);
   }
 
-  // --- 4. SAVE TO TELEGRAM BOT with upload progress + cancel ---
-  // caption can be null or empty => bot will send no caption
+  // --- 4a. SAVE VIDEO TO TELEGRAM BOT with upload progress + cancel ---
   Future<void> saveToBot(
     String tempFilePath,
     String botToken,
@@ -304,7 +347,6 @@ class DownloadService {
         'supports_streaming': true,
       };
 
-      // Only add caption if non-empty, Telegram treats caption as optional.[web:221][web:241]
       if (caption != null && caption.trim().isNotEmpty) {
         fields['caption'] = caption.trim();
       }
@@ -329,7 +371,9 @@ class DownloadService {
       }
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
-        if (kDebugMode) print('Telegram upload cancelled: ${e.message}');
+        if (kDebugMode) {
+          print('Telegram upload cancelled: ${e.message}');
+        }
         throw Exception('CANCELLED');
       }
       if (await file.exists()) {
@@ -337,7 +381,81 @@ class DownloadService {
       }
       throw Exception('Chat ID မှားနေပါသည်။');
     } catch (e) {
-      if (kDebugMode) print('Telegram Upload Error: $e');
+      if (kDebugMode) {
+        print('Telegram Upload Error: $e');
+      }
+      if (await file.exists()) {
+        await file.delete();
+      }
+      throw Exception('Chat ID မှားနေပါသည်။');
+    } finally {
+      _currentDioCancelToken = null;
+    }
+  }
+
+  // --- 4b. SAVE AUDIO TO TELEGRAM BOT with upload progress + cancel ---
+  Future<void> saveAudioToBot(
+    String tempFilePath,
+    String botToken,
+    String chatId,
+    DownloadProgressCallback? onProgress, {
+    String? caption,
+  }) async {
+    final file = File(tempFilePath);
+    final fileName = file.path.split('/').last;
+
+    if (!await file.exists()) {
+      throw Exception('Temporary audio file was not found.');
+    }
+
+    final cancelToken = CancelToken();
+    _currentDioCancelToken = cancelToken;
+
+    try {
+      final apiUrl = 'https://api.telegram.org/bot$botToken/sendAudio';
+
+      final Map<String, dynamic> fields = {
+        'chat_id': chatId,
+        'audio': await MultipartFile.fromFile(tempFilePath, filename: fileName),
+      };
+
+      if (caption != null && caption.trim().isNotEmpty) {
+        fields['caption'] = caption.trim();
+      }
+
+      final formData = FormData.fromMap(fields);
+
+      await _dio.post(
+        apiUrl,
+        data: formData,
+        options: Options(sendTimeout: const Duration(minutes: 5)),
+        cancelToken: cancelToken,
+        onSendProgress: (sent, total) {
+          if (onProgress != null && total > 0) {
+            final progress = sent / total;
+            onProgress(progress.clamp(0.0, 1.0));
+          }
+        },
+      );
+
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        if (kDebugMode) {
+          print('Telegram audio upload cancelled: ${e.message}');
+        }
+        throw Exception('CANCELLED');
+      }
+      if (await file.exists()) {
+        await file.delete();
+      }
+      throw Exception('Chat ID မှားနေပါသည်။');
+    } catch (e) {
+      if (kDebugMode) {
+        print('Telegram Audio Upload Error: $e');
+      }
       if (await file.exists()) {
         await file.delete();
       }

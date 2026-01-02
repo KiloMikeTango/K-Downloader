@@ -34,16 +34,29 @@ class DownloadService {
     _youtubeCancelRequested = true;
   }
 
+  // Remove hashtags and normalize spaces in titles before sanitizing.
+  String _cleanTitleForFilename(String title) {
+    // Drop hashtags like #abc123
+    var text = title.replaceAll(RegExp(r'#\S+'), '');
+    // Collapse whitespace
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return text;
+  }
+
   // Filename sanitization
   String _sanitizeTitle(String title) {
+    // First remove hashtags and tidy spaces.
+    title = _cleanTitleForFilename(title);
+
+    // Replace only truly illegal filename chars with a space.
     final illegalCharsRegex = RegExp(r'[<>:"/\\|?*]|\.$');
-    String safeTitle = title.replaceAll(illegalCharsRegex, '_');
-    safeTitle = safeTitle
-        .replaceAll(RegExp(r'__+'), '_')
-        .trim()
-        .replaceAll(RegExp(r'^_+|_+$'), '');
+    String safeTitle = title.replaceAll(illegalCharsRegex, ' ');
+
+    // Collapse multiple spaces
+    safeTitle = safeTitle.replaceAll(RegExp(r'\s+'), ' ').trim();
+
     if (safeTitle.isEmpty) {
-      return 'Video_Download';
+      return 'Video Download';
     }
     return safeTitle;
   }

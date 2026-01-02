@@ -21,13 +21,13 @@ final statsServiceProvider = Provider((ref) => StatsService());
 
 final transferPhaseProvider =
     StateNotifierProvider<StateController<TransferPhase>, TransferPhase>(
-  (ref) => StateController(TransferPhase.idle),
-);
+      (ref) => StateController(TransferPhase.idle),
+    );
 
 final downloadProgressProvider =
     StateNotifierProvider<StateController<double>, double>(
-  (ref) => StateController(0.0),
-);
+      (ref) => StateController(0.0),
+    );
 
 final urlProvider = StateProvider<String>((ref) => '');
 final tokenProvider = StateProvider<String>((ref) => kBotToken);
@@ -50,20 +50,20 @@ final downloadModeProvider = StateProvider<DownloadMode>(
 // Thumbnail URL
 final thumbnailUrlProvider =
     StateNotifierProvider<StateController<String?>, String?>(
-  (ref) => StateController<String?>(null),
-);
+      (ref) => StateController<String?>(null),
+    );
 
 // Video caption from platform (raw, will be cleaned before send)
 final videoCaptionProvider =
     StateNotifierProvider<StateController<String?>, String?>(
-  (ref) => StateController<String?>(null),
-);
+      (ref) => StateController<String?>(null),
+    );
 
 // Save with caption flag
 final saveWithCaptionProvider =
     StateNotifierProvider<StateController<bool>, bool>(
-  (ref) => StateController<bool>(true),
-);
+      (ref) => StateController<bool>(true),
+    );
 
 class HomeController {
   final WidgetRef ref;
@@ -114,8 +114,7 @@ class HomeController {
       ref.read(isChatIdSavedProvider.notifier).state = true;
       ref.read(messageProvider.notifier).state = 'msg_saved_chatid'.tr();
     } catch (_) {
-      ref.read(messageProvider.notifier).state =
-          'msg_error_chatid_save.'.tr();
+      ref.read(messageProvider.notifier).state = 'msg_error_chatid_save.'.tr();
     }
   }
 
@@ -265,8 +264,7 @@ class HomeController {
     // fresh run: reset flags + UI
     service.resetCancelFlags();
     ref.read(downloadProgressProvider.notifier).state = 0.0;
-    ref.read(transferPhaseProvider.notifier).state =
-        TransferPhase.downloading;
+    ref.read(transferPhaseProvider.notifier).state = TransferPhase.downloading;
     ref.read(loadingProvider.notifier).state = true;
     ref.read(messageProvider.notifier).state = "msg_downloading".tr();
 
@@ -284,8 +282,7 @@ class HomeController {
       }
 
       void onDownloadProgress(double p) {
-        ref.read(downloadProgressProvider.notifier).state =
-            p.clamp(0.0, 1.0);
+        ref.read(downloadProgressProvider.notifier).state = p.clamp(0.0, 1.0);
       }
 
       // ---- DOWNLOAD PHASE ----
@@ -328,26 +325,36 @@ class HomeController {
       ref.read(downloadProgressProvider.notifier).state = 1.0;
 
       // ---- UPLOAD PHASE ----
-      ref.read(transferPhaseProvider.notifier).state =
-          TransferPhase.uploading;
+      ref.read(transferPhaseProvider.notifier).state = TransferPhase.uploading;
       ref.read(downloadProgressProvider.notifier).state = 0.0;
 
       void onUploadProgress(double p) {
-        ref.read(downloadProgressProvider.notifier).state =
-            p.clamp(0.0, 1.0);
+        ref.read(downloadProgressProvider.notifier).state = p.clamp(0.0, 1.0);
+      }
+
+      String _removeHashtags(String text) {
+        // Remove hashtags + following non‑space chars, plus extra spaces.
+        final withoutTags = text.replaceAll(RegExp(r'#\S+'), '');
+        // Collapse multiple spaces and trim.
+        return withoutTags.replaceAll(RegExp(r'\s+'), ' ').trim();
       }
 
       String? buildCaptionFromFile(String? path) {
         if (!saveWithCaption) return null;
+
         if (userCaption != null && userCaption.trim().isNotEmpty) {
-          return userCaption.trim();
+          final cleaned = _removeHashtags(userCaption);
+          if (cleaned.isNotEmpty) return cleaned;
         }
+
         if (path != null) {
           final name = path.split('/').last;
-          return name
+          final base = name
               .replaceAll('.mp4', '')
               .replaceAll('.m4a', '')
               .replaceAll('.mp3', '');
+          final cleaned = _removeHashtags(base);
+          return cleaned.isNotEmpty ? cleaned : base;
         }
         return null;
       }
@@ -356,8 +363,9 @@ class HomeController {
 
       // Video first (if any)
       if (tempVideoPath != null) {
-        ref.read(messageProvider.notifier).state =
-            isBoth ? "Uploading video..." : "msg_uploading".tr();
+        ref.read(messageProvider.notifier).state = isBoth
+            ? "Uploading video..."
+            : "msg_uploading".tr();
         final captionToSend = buildCaptionFromFile(tempVideoPath);
         await service.saveToBot(
           tempVideoPath,
@@ -371,8 +379,9 @@ class HomeController {
       // Audio second (if any)
       if (tempAudioPath != null) {
         ref.read(downloadProgressProvider.notifier).state = 0.0;
-        ref.read(messageProvider.notifier).state =
-            isBoth ? "Uploading audio..." : "msg_uploading".tr();
+        ref.read(messageProvider.notifier).state = isBoth
+            ? "Uploading audio..."
+            : "msg_uploading".tr();
         final captionToSend = buildCaptionFromFile(tempAudioPath);
         await service.saveAudioToBot(
           tempAudioPath,
@@ -388,9 +397,7 @@ class HomeController {
 
       try {
         final linkTypeValue = getLinkType(url);
-        await ref
-            .read(statsServiceProvider)
-            .incrementPlatform(linkTypeValue);
+        await ref.read(statsServiceProvider).incrementPlatform(linkTypeValue);
       } catch (_) {
         // ignore analytics errors
       }
@@ -406,8 +413,7 @@ class HomeController {
         userMessage = "msg_error_cancelled".tr();
       } else if (msg.contains('Chat ID')) {
         userMessage = "msg_error_chat_id".tr();
-      } else if (msg.contains('Network') ||
-          msg.contains('SocketException')) {
+      } else if (msg.contains('Network') || msg.contains('SocketException')) {
         userMessage = "msg_error_network".tr();
       } else {
         userMessage = "msg_error_unknown".tr() + ' ($msg)';

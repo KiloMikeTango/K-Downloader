@@ -7,31 +7,46 @@ class StatsService {
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  // App timezone: Yangon (GMT+6:30)
+  static const Duration _appOffset = Duration(hours: 6, minutes: 30);
+
+  // Convert any DateTime (UTC or local) to the app's "day" (midnight in GMT+6:30)
+  DateTime _toAppDay(DateTime dt) {
+    final utc = dt.toUtc();
+    final shifted = utc.add(_appOffset);
+    return DateTime(shifted.year, shifted.month, shifted.day);
+  }
+
   Future<void> incrementPlatform(String platformKey) async {
     final docRef = _db.collection(_collection).doc(_docId);
 
     await _db.runTransaction((txn) async {
       final snap = await txn.get(docRef);
-      final now = DateTime.now().toUtc();
+      final nowUtc = DateTime.now().toUtc();
 
       int youtube = 0;
       int tiktok = 0;
       int facebook = 0;
-      DateTime? lastReset;
+      DateTime? lastResetUtc;
 
       if (snap.exists) {
         final data = snap.data() as Map<String, dynamic>;
         youtube = (data['youtubeCount'] ?? 0) as int;
         tiktok = (data['tiktokCount'] ?? 0) as int;
         facebook = (data['facebookCount'] ?? 0) as int;
+
         final ts = data['lastResetAt'] as Timestamp?;
         if (ts != null) {
-          lastReset = ts.toDate().toUtc();
+          lastResetUtc = ts.toDate().toUtc();
         }
       }
 
-      final shouldReset = lastReset == null ||
-          now.difference(lastReset).inHours >= 24;
+      final todayApp = _toAppDay(nowUtc);
+      final lastAppDay =
+          lastResetUtc != null ? _toAppDay(lastResetUtc) : null;
+
+      final shouldReset =
+          lastAppDay == null || todayApp.isAfter(lastAppDay);
 
       if (shouldReset) {
         youtube = 0;
@@ -51,12 +66,16 @@ class StatsService {
           break;
       }
 
-      txn.set(docRef, {
-        'youtubeCount': youtube,
-        'tiktokCount': tiktok,
-        'facebookCount': facebook,
-        'lastResetAt': Timestamp.fromDate(now),
-      }, SetOptions(merge: false));
+      txn.set(
+        docRef,
+        {
+          'youtubeCount': youtube,
+          'tiktokCount': tiktok,
+          'facebookCount': facebook,
+          'lastResetAt': Timestamp.fromDate(nowUtc),
+        },
+        SetOptions(merge: false),
+      );
     });
   }
 }

@@ -12,7 +12,7 @@ import '../services/stats_service.dart';
 
 // --- Enums & Providers ---
 
-enum TransferPhase { idle, downloading, uploading }
+enum TransferPhase { idle, downloading, extracting, uploading }
 
 // New: what to download
 enum DownloadMode { video, audio, both }
@@ -294,9 +294,27 @@ class HomeController {
         );
 
         if (mode == DownloadMode.audio || mode == DownloadMode.both) {
-          // Extract MP3 from downloaded video.
+          // Extraction phase
+          ref.read(transferPhaseProvider.notifier).state =
+              TransferPhase.extracting;
+          ref.read(messageProvider.notifier).state = "Extracting audio...";
           ref.read(downloadProgressProvider.notifier).state = 0.0;
-          tempAudioPath = await service.extractMp3FromVideo(tempVideoPath);
+
+          // Real-time extraction progress from FFmpeg statistics
+          tempAudioPath = await service.extractMp3FromVideo(
+            tempVideoPath,
+            onProgress: (p) {
+              ref.read(downloadProgressProvider.notifier).state = p.clamp(
+                0.0,
+                1.0,
+              );
+            },
+          );
+
+          // After extraction, mark as finished download-side
+          ref.read(transferPhaseProvider.notifier).state =
+              TransferPhase.downloading;
+          ref.read(downloadProgressProvider.notifier).state = 1.0;
 
           // If user selected Audio only, discard the video to save space.
           if (mode == DownloadMode.audio &&
@@ -333,9 +351,7 @@ class HomeController {
       }
 
       String _removeHashtags(String text) {
-        // Remove hashtags + following non‑space chars, plus extra spaces.
         final withoutTags = text.replaceAll(RegExp(r'#\S+'), '');
-        // Collapse multiple spaces and trim.
         return withoutTags.replaceAll(RegExp(r'\s+'), ' ').trim();
       }
 
@@ -398,9 +414,7 @@ class HomeController {
       try {
         final linkTypeValue = getLinkType(url);
         await ref.read(statsServiceProvider).incrementPlatform(linkTypeValue);
-      } catch (_) {
-        // ignore analytics errors
-      }
+      } catch (_) {}
 
       ref.read(thumbnailUrlProvider.notifier).state = null;
       ref.read(videoCaptionProvider.notifier).state = null;

@@ -3,6 +3,9 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:ffmpeg_kit_flutter_new_https/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_https/ffmpeg_session.dart';
+import 'package:ffmpeg_kit_flutter_new_https/ffprobe_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_https/statistics.dart';
 import 'package:ffmpeg_kit_flutter_new_https/return_code.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -274,8 +277,31 @@ class DownloadService {
     }
   }
 
-  // --- Extract MP3 audio from a downloaded video (YouTube muxed, Facebook, TikTok, etc.) ---
-  Future<String> extractMp3FromVideo(String inputVideoPath) async {
+  // --- helper: get media duration in milliseconds using FFprobe ---
+  Future<int?> _getMediaDurationMillis(String inputPath) async {
+    try {
+      final session = await FFprobeKit.getMediaInformation(inputPath);
+      final info = await session.getMediaInformation();
+      final durationStr = info?.getDuration();
+      if (durationStr == null) {
+        return null;
+      }
+      final seconds = double.tryParse(durationStr);
+      if (seconds == null) return null;
+      return (seconds * 1000).round();
+    } catch (e) {
+      if (kDebugMode) {
+        print('FFprobe duration error: $e');
+      }
+      return null;
+    }
+  }
+
+  // --- Extract audio from a downloaded video (YouTube muxed, Facebook, TikTok, etc.) ---
+  Future<String> extractMp3FromVideo(
+    String inputVideoPath, {
+    DownloadProgressCallback? onProgress,
+  }) async {
     final inputFile = File(inputVideoPath);
     if (!await inputFile.exists()) {
       throw Exception('Video file for audio extraction not found.');
@@ -286,21 +312,69 @@ class DownloadService {
     // use m4a container + AAC codec (widely available in non‑GPL builds)
     final outputPath = '${dir.path}/$baseName.m4a';
 
-    // -vn: no video, -c:a aac: use AAC encoder
-    final command = '-i "$inputVideoPath" -vn -c:a aac -b:a 192k "$outputPath"';
-    final session = await FFmpegKit.execute(command);
-    final returnCode = await session.getReturnCode();
+    // Try to get duration for accurate progress
+    final totalDurationMs = await _getMediaDurationMillis(inputVideoPath);
 
-    if (ReturnCode.isSuccess(returnCode)) {
-      if (!await File(outputPath).exists()) {
-        throw Exception('Audio output file was not created.');
-      }
-      return outputPath;
+    if (kDebugMode) {
+      print('Starting audio extraction. Duration(ms) = $totalDurationMs');
     }
 
-    final logs = await session.getAllLogs();
-    final logText = logs.map((e) => e.getMessage()).join('\n');
-    throw Exception('Failed to extract audio. FFmpeg error: $logText');
+    // Reset initial progress
+    onProgress?.call(0.0);
+
+    // -vn: no video, -c:a aac: use AAC encoder
+    final command = '-i "$inputVideoPath" -vn -c:a aac -b:a 192k "$outputPath"';
+
+    final completer = Completer<String>();
+
+    FFmpegKit.executeAsync(
+      command,
+      (session) async {
+        // completion callback
+        final returnCode = await session.getReturnCode();
+
+        if (ReturnCode.isSuccess(returnCode)) {
+          if (!await File(outputPath).exists()) {
+            completer.completeError(
+              Exception('Audio output file was not created.'),
+            );
+            return;
+          }
+          onProgress?.call(1.0);
+          completer.complete(outputPath);
+        } else {
+          final logs = await session.getAllLogs();
+          final logText = logs.map((e) => e.getMessage()).join('\n');
+          completer.completeError(
+            Exception('Failed to extract audio. FFmpeg error: $logText'),
+          );
+        }
+      },
+      (log) {
+        // Optional per-log callback; you can inspect log.getMessage() if needed.
+        if (kDebugMode) {
+          // print(log.getMessage());
+        }
+      },
+      (Statistics statistics) {
+        // Real-time statistics callback: map current time to 0–1 progress.
+        if (onProgress != null && totalDurationMs != null && totalDurationMs > 0) {
+          final currentTimeMs = statistics.getTime().toInt();
+          double p = currentTimeMs / totalDurationMs;
+          if (p < 0.0) p = 0.0;
+          if (p > 0.99) p = 0.99; // leave 1.0 for completion callback
+          onProgress(p);
+        }
+      },
+    ).then((_) {
+      // nothing extra here; completion handled by completer
+    }).catchError((e) {
+      if (!completer.isCompleted) {
+        completer.completeError(e);
+      }
+    });
+
+    return completer.future;
   }
 
   // --- 2. FACEBOOK DOWNLOAD with real-time progress + cancel ---

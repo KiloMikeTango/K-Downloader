@@ -242,9 +242,12 @@ class _HomePageState extends ConsumerState<HomePage>
 
     final percent = (progress * 100).clamp(0, 100).toInt();
 
-    final isDownloading = phase == TransferPhase.downloading;
+    final isDownloading =
+        phase == TransferPhase.downloading || phase == TransferPhase.extracting;
+
     final String phaseLabel = switch (phase) {
       TransferPhase.downloading => 'Downloading: $percent%',
+      TransferPhase.extracting => 'Extracting audio...',
       TransferPhase.uploading => 'Sending to Telegram: $percent%',
       _ => '',
     };
@@ -457,9 +460,7 @@ class _HomePageState extends ConsumerState<HomePage>
                     ),
                   ),
                   child: TextButton.icon(
-                  onPressed: isDownloading ? _controller.handleCancel : null,
-
-
+                    onPressed: isDownloading ? _controller.handleCancel : null,
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.white,
                       padding: EdgeInsets.symmetric(horizontal: 12 * scale),
@@ -519,7 +520,7 @@ class _HomePageState extends ConsumerState<HomePage>
                         Icon(Icons.send, size: 22 * scale, color: Colors.white),
                         SizedBox(width: 12 * scale),
                         Text(
-                          isLoading ? 'Downloading...' : "btn_download".tr(),
+                          isLoading ? 'Processing...' : "btn_download".tr(),
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,

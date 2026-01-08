@@ -3,49 +3,13 @@ import 'dart:ui';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:video_downloader/constant.dart';
 import 'package:video_downloader/controller/home_controller.dart';
-import 'package:video_downloader/screens/tutorial_page.dart';
+import 'package:video_downloader/widgets/home_action_button.dart';
+import 'package:video_downloader/widgets/home_background.dart';
+import 'package:video_downloader/widgets/home_config_panel.dart';
+import 'package:video_downloader/widgets/home_link_card.dart';
+import 'package:video_downloader/widgets/home_tutorial_button.dart';
 
-// --- Glass Container Widget ---
-class GlassContainer extends StatelessWidget {
-  final Widget child;
-  final double blur;
-  final double opacity;
-  final EdgeInsets padding;
-
-  const GlassContainer({
-    super.key,
-    required this.child,
-    this.blur = 18,
-    this.opacity = 0.10,
-    this.padding = const EdgeInsets.all(16),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: kGlassBaseColor.withOpacity(opacity),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.20),
-              width: 1.1,
-            ),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
-// --- HomePage ---
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
@@ -101,655 +65,6 @@ class _HomePageState extends ConsumerState<HomePage>
     return scale;
   }
 
-  TextStyle _responsiveTextStyle(
-    BuildContext context, {
-    double size = 14,
-    FontWeight weight = FontWeight.normal,
-    Color? color,
-  }) {
-    final scale = _mediaScale(context);
-    return TextStyle(fontSize: size * scale, fontWeight: weight, color: color);
-  }
-
-  double _responsivePadding(BuildContext context, double base) {
-    final scale = _mediaScale(context);
-    return base * scale;
-  }
-
-  Widget _buildThumbnailPreview(BuildContext context) {
-    final thumbnailUrl = ref.watch(thumbnailUrlProvider);
-    final caption = ref.watch(videoCaptionProvider);
-    final scale = _mediaScale(context);
-
-    if ((thumbnailUrl == null || thumbnailUrl.isEmpty) &&
-        (caption == null || caption.isEmpty)) {
-      return const SizedBox.shrink();
-    }
-
-    final radius = 14 * scale;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final maxWidth = (screenWidth * 0.8).clamp(220.0, 480.0);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(height: _responsivePadding(context, 16.5)),
-        if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
-          Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: maxWidth),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(radius),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(radius),
-                      color: Colors.white.withOpacity(0.06),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.25),
-                        width: 1.0,
-                      ),
-                    ),
-                    child: AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: Image.network(
-                        thumbnailUrl,
-                        fit: BoxFit.cover,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(
-                            color: Colors.black26,
-                            child: const Center(
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: Colors.black26,
-                            child: Center(
-                              child: Icon(
-                                Icons.broken_image_outlined,
-                                color: Colors.white54,
-                                size: 28 * scale,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        if (caption != null && caption.isNotEmpty) ...[
-          SizedBox(height: _responsivePadding(context, 10)),
-          Text(
-            caption,
-            textAlign: TextAlign.left,
-            style: _responsiveTextStyle(
-              context,
-              size: 14,
-              color: Colors.white.withOpacity(0.9),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildModeChip(
-    BuildContext context, {
-    required String label,
-    required bool selected,
-    required double scale,
-  }) {
-    return Container(
-      padding: EdgeInsets.symmetric(vertical: _responsivePadding(context, 7)),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999 * scale),
-        color: selected
-            ? kPrimaryColor.withOpacity(0.22)
-            : Colors.white.withOpacity(0.05),
-        border: Border.all(
-          color: selected ? kPrimaryColor : Colors.white.withOpacity(0.25),
-          width: 1.0,
-        ),
-      ),
-      child: Center(
-        child: Text(
-          label,
-          style: _responsiveTextStyle(
-            context,
-            size: 13,
-            weight: FontWeight.w600,
-            color: Colors.white.withOpacity(selected ? 0.98 : 0.8),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLinkCard(BuildContext context, double width) {
-    final isLoading = ref.watch(loadingProvider);
-    final message = ref.watch(messageProvider);
-    final progress = ref.watch(downloadProgressProvider);
-    final phase = ref.watch(transferPhaseProvider);
-    final saveWithCaption = ref.watch(saveWithCaptionProvider);
-    final mode = ref.watch(downloadModeProvider);
-
-    final percent = (progress * 100).clamp(0, 100).toInt();
-
-    final isDownloading =
-        phase == TransferPhase.downloading || phase == TransferPhase.extracting;
-
-    final String phaseLabel = switch (phase) {
-      TransferPhase.downloading => 'Downloading: $percent%',
-      TransferPhase.extracting => 'Extracting audio...',
-      TransferPhase.uploading => 'Sending to Telegram: $percent%',
-      _ => '',
-    };
-
-    final scale = _mediaScale(context);
-
-    final isVideo = mode == DownloadMode.video;
-    final isAudio = mode == DownloadMode.audio;
-    final isBoth = mode == DownloadMode.both;
-
-    return GlassContainer(
-      blur: 18,
-      opacity: 0.10,
-      padding: EdgeInsets.symmetric(
-        horizontal: _responsivePadding(context, 18),
-        vertical: _responsivePadding(context, 20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _urlController,
-            enabled: !isLoading,
-            style: _responsiveTextStyle(
-              context,
-              size: 15,
-              weight: FontWeight.w500,
-              color: Colors.white,
-            ),
-            decoration: InputDecoration(
-              labelText: 'Youtube or Tiktok Link',
-              hintText: 'Link',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-              labelStyle: TextStyle(color: Colors.white.withOpacity(0.75)),
-              filled: true,
-              fillColor: Colors.white.withOpacity(0.05),
-              prefixIcon: Icon(
-                Icons.link,
-                color: Colors.white.withOpacity(0.7),
-              ),
-              suffixIcon: isLoading
-                  ? Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.2,
-                        color: kPrimaryColor,
-                      ),
-                    )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: kPrimaryColor, width: 1.8),
-              ),
-            ),
-            onChanged: (value) {
-              final cleaned = _controller.cleanYoutubeUrl(value);
-              if (cleaned != value) {
-                _urlController.text = cleaned;
-                _urlController.selection = TextSelection.fromPosition(
-                  TextPosition(offset: cleaned.length),
-                );
-              }
-              ref.read(urlProvider.notifier).state = cleaned;
-              _controller.updateThumbnailForUrl(cleaned);
-            },
-          ),
-          SizedBox(height: _responsivePadding(context, 8)),
-          // Download type selector
-          Text(
-            "Download as",
-            style: _responsiveTextStyle(
-              context,
-              size: 12,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-          SizedBox(height: 6 * scale),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: isLoading
-                      ? null
-                      : () => ref.read(downloadModeProvider.notifier).state =
-                            DownloadMode.video,
-                  child: _buildModeChip(
-                    context,
-                    label: "Video",
-                    selected: isVideo,
-                    scale: scale,
-                  ),
-                ),
-              ),
-              SizedBox(width: 6 * scale),
-              Expanded(
-                child: GestureDetector(
-                  onTap: isLoading
-                      ? null
-                      : () => ref.read(downloadModeProvider.notifier).state =
-                            DownloadMode.audio,
-                  child: _buildModeChip(
-                    context,
-                    label: "Audio",
-                    selected: isAudio,
-                    scale: scale,
-                  ),
-                ),
-              ),
-              SizedBox(width: 6 * scale),
-              Expanded(
-                child: GestureDetector(
-                  onTap: isLoading
-                      ? null
-                      : () => ref.read(downloadModeProvider.notifier).state =
-                            DownloadMode.both,
-                  child: _buildModeChip(
-                    context,
-                    label: "Both",
-                    selected: isBoth,
-                    scale: scale,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: _responsivePadding(context, 8)),
-          Row(
-            children: [
-              Checkbox(
-                value: saveWithCaption,
-                onChanged: isLoading
-                    ? null
-                    : (value) {
-                        ref.read(saveWithCaptionProvider.notifier).state =
-                            value ?? true;
-                      },
-                activeColor: kPrimaryColor,
-                checkColor: Colors.white,
-              ),
-              Expanded(
-                child: Text(
-                  "label_save_with_caption".tr(),
-                  style: _responsiveTextStyle(
-                    context,
-                    size: 13.5,
-                    color: Colors.white.withOpacity(0.85),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          _buildThumbnailPreview(context),
-          SizedBox(height: _responsivePadding(context, 15)),
-          if (isLoading) ...[
-            LinearProgressIndicator(
-              color: kPrimaryColor,
-              value: progress > 0 ? progress : null,
-              minHeight: 4,
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.center,
-              child: Text(
-                phaseLabel.isNotEmpty
-                    ? phaseLabel
-                    : (progress > 0 ? '$percent%' : ''),
-                style: _responsiveTextStyle(
-                  context,
-                  size: 12,
-                  color: Colors.white70,
-                ),
-              ),
-            ),
-          ],
-          SizedBox(height: _responsivePadding(context, 5.5)),
-          Text(
-            message.isEmpty ? '' : message,
-            textAlign: TextAlign.center,
-            style: _responsiveTextStyle(
-              context,
-              size: 15.5,
-              weight: FontWeight.w500,
-              color: message.startsWith('Error:')
-                  ? Colors.red.shade300
-                  : message.startsWith('Telegram')
-                  ? Colors.green.shade300
-                  : Colors.white,
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 32 * scale,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10 * scale),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10 * scale),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.28),
-                      width: 1.0,
-                    ),
-                    color: Colors.white.withOpacity(
-                      isDownloading ? 0.12 : 0.06,
-                    ),
-                  ),
-                  child: TextButton.icon(
-                    onPressed: isDownloading ? _controller.handleCancel : null,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(horizontal: 12 * scale),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    icon: Icon(Icons.close, size: 16 * scale),
-                    label: Text(
-                      'CANCEL',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12 * scale,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton(BuildContext context) {
-    final isLoading = ref.watch(loadingProvider);
-    final scale = _mediaScale(context);
-
-    return SizedBox(
-      height: 50 * scale,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16 * scale),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16 * scale),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.28),
-                width: 1.0,
-              ),
-              color: Colors.white.withOpacity(isLoading ? 0.12 : 0.06),
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: isLoading ? null : _controller.handleDownload,
-                borderRadius: BorderRadius.circular(16 * scale),
-                child: Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 18 * scale,
-                      vertical: 10 * scale,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.send, size: 22 * scale, color: Colors.white),
-                        SizedBox(width: 12 * scale),
-                        Text(
-                          isLoading ? 'Processing...' : "btn_download".tr(),
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14 * scale,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildConfigPanel(BuildContext context) {
-    final isSaved = ref.watch(isChatIdSavedProvider);
-    final currentChatId = ref.watch(chatIdProvider);
-    final bool isModified = _chatIdController.text.trim() != currentChatId;
-    final bool canSave =
-        _chatIdController.text.trim().isNotEmpty && (isModified || !isSaved);
-    final isLoading = ref.watch(loadingProvider);
-    final scale = _mediaScale(context);
-
-    return GlassContainer(
-      blur: 18,
-      opacity: 0.10,
-      padding: EdgeInsets.all(_responsivePadding(context, 16)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            "chatid_card_title".tr(),
-            textAlign: TextAlign.center,
-            style: _responsiveTextStyle(
-              context,
-              size: 16,
-              weight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          SizedBox(height: _responsivePadding(context, 12)),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  enabled: !isLoading,
-                  controller: _chatIdController,
-                  keyboardType: TextInputType.number,
-                  style: _responsiveTextStyle(
-                    context,
-                    size: 14,
-                    color: Colors.white,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: 'Chat ID',
-                    labelStyle: TextStyle(color: Colors.white.withOpacity(0.7)),
-                    hintText: 'eg.123456789',
-                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.05),
-                    prefixIcon: Icon(
-                      Icons.chat_bubble,
-                      color: kAccentColor.withOpacity(0.8),
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: kPrimaryColor, width: 1.5),
-                    ),
-                  ),
-                  onChanged: (value) {
-                    ref.read(chatIdProvider.notifier).state = value;
-                    ref.read(isChatIdSavedProvider.notifier).state =
-                        value.trim() == currentChatId &&
-                        currentChatId.isNotEmpty;
-                    setState(() {});
-                  },
-                ),
-              ),
-              SizedBox(width: 10 * scale),
-              SizedBox(
-                height: 48 * scale,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10 * scale),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10 * scale),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.26),
-                          width: 1.0,
-                        ),
-                        color: Colors.white.withOpacity(canSave ? 0.12 : 0.06),
-                      ),
-                      child: TextButton(
-                        onPressed: (!isLoading && canSave)
-                            ? () =>
-                                  _controller.saveChatId(_chatIdController.text)
-                            : null,
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(horizontal: 12 * scale),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          isSaved ? 'SAVED' : 'SAVE ID',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13 * scale,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: _responsivePadding(context, 12)),
-          Text(
-            'Chat ID: ${ref.watch(chatIdProvider)}',
-            style: _responsiveTextStyle(
-              context,
-              size: 12,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTutorialButton(BuildContext context) {
-    final scale = _mediaScale(context);
-    return OutlinedButton(
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const TutorialPage()),
-        );
-      },
-      style: OutlinedButton.styleFrom(
-        side: BorderSide(color: kPrimaryColor),
-        padding: EdgeInsets.symmetric(
-          vertical: 10 * scale,
-          horizontal: 10 * scale,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10 * scale),
-        ),
-      ),
-      child: Text(
-        "how_to_use".tr(),
-        style: TextStyle(
-          color: kPrimaryColor,
-          fontSize: 15 * scale,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAnimatedBackground(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-
-    return AnimatedBuilder(
-      animation: _bgAnimation,
-      builder: (context, child) {
-        final t = _bgAnimation.value;
-
-        return Stack(
-          children: [
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [kDarkBackgroundColor, Color(0xFF1B2735)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
-            Positioned(
-              top: -size.height * 0.25 + 40 * (t - 0.5),
-              left: -size.width * 0.4,
-              child: _HomeGlassBlob(
-                width: size.width * 1.0,
-                height: size.width * 1.0,
-                color: const Color(0xFF4F46E5).withOpacity(0.45),
-              ),
-            ),
-            Positioned(
-              bottom: -size.height * 0.28 - 36 * (t - 0.5),
-              right: -size.width * 0.35,
-              child: _HomeGlassBlob(
-                width: size.width * 1.1,
-                height: size.width * 1.1,
-                color: const Color(0xFF22D3EE).withOpacity(0.40),
-              ),
-            ),
-            Positioned(
-              top: size.height * 0.18 + 26 * (t - 0.5),
-              right: size.width * 0.18 + 14 * (0.5 - t),
-              child: _HomeDrop(
-                diameter: size.width * 0.20,
-                color: Colors.white.withOpacity(0.22),
-              ),
-            ),
-            Positioned(
-              bottom: size.height * 0.20 + 20 * (0.5 - t),
-              left: size.width * 0.22 + 16 * (t - 0.5),
-              child: _HomeDrop(
-                diameter: size.width * 0.16,
-                color: Colors.white.withOpacity(0.18),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final currentUrl = ref.watch(urlProvider);
@@ -765,7 +80,7 @@ class _HomePageState extends ConsumerState<HomePage>
       backgroundColor: const Color(0xFF212121),
       body: Stack(
         children: [
-          _buildAnimatedBackground(context),
+          HomeAnimatedBackground(animation: _bgAnimation),
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -805,14 +120,22 @@ class _HomePageState extends ConsumerState<HomePage>
                                       color: Colors.white.withOpacity(0.9),
                                     ),
                                     SizedBox(height: 20 * scale),
-                                    _buildLinkCard(context, width),
+                                    HomeLinkCard(
+                                      controller: _controller,
+                                      urlController: _urlController,
+                                      captionController: _captionController,
+                                      mediaScale: _mediaScale,
+                                    ),
                                     SizedBox(height: 24 * scale),
-                                    _buildActionButton(context),
+                                    HomeActionButton(
+                                      controller: _controller,
+                                      mediaScale: _mediaScale,
+                                    ),
                                     SizedBox(height: 24 * scale),
                                     Row(
                                       children: [
                                         Expanded(
-                                          child: _buildTutorialButton(context),
+                                          child: const HomeTutorialButton(),
                                         ),
                                         SizedBox(width: 12 * scale),
                                         const Expanded(
@@ -827,7 +150,13 @@ class _HomePageState extends ConsumerState<HomePage>
                               Expanded(
                                 flex: 1,
                                 child: Column(
-                                  children: [_buildConfigPanel(context)],
+                                  children: [
+                                    HomeConfigPanel(
+                                      controller: _controller,
+                                      chatIdController: _chatIdController,
+                                      mediaScale: _mediaScale,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -841,13 +170,25 @@ class _HomePageState extends ConsumerState<HomePage>
                                 color: Colors.white.withOpacity(0.9),
                               ),
                               SizedBox(height: 20 * scale),
-                              _buildLinkCard(context, width),
+                              HomeLinkCard(
+                                controller: _controller,
+                                urlController: _urlController,
+                                captionController: _captionController,
+                                mediaScale: _mediaScale,
+                              ),
                               SizedBox(height: 20 * scale),
-                              _buildActionButton(context),
+                              HomeActionButton(
+                                controller: _controller,
+                                mediaScale: _mediaScale,
+                              ),
                               SizedBox(height: 20 * scale),
-                              _buildConfigPanel(context),
+                              HomeConfigPanel(
+                                controller: _controller,
+                                chatIdController: _chatIdController,
+                                mediaScale: _mediaScale,
+                              ),
                               SizedBox(height: 16 * scale),
-                              _buildTutorialButton(context),
+                              const HomeTutorialButton(),
                               SizedBox(height: 13.5 * scale),
                               Column(
                                 children: [
@@ -880,57 +221,6 @@ class _HomePageState extends ConsumerState<HomePage>
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _HomeGlassBlob extends StatelessWidget {
-  final double width;
-  final double height;
-  final Color color;
-
-  const _HomeGlassBlob({
-    required this.width,
-    required this.height,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipOval(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-        child: Container(
-          width: width,
-          height: height,
-          decoration: BoxDecoration(
-            gradient: RadialGradient(colors: [color, color.withOpacity(0.0)]),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HomeDrop extends StatelessWidget {
-  final double diameter;
-  final Color color;
-
-  const _HomeDrop({required this.diameter, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipOval(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          width: diameter,
-          height: diameter,
-          decoration: BoxDecoration(
-            gradient: RadialGradient(colors: [color, color.withOpacity(0.0)]),
-          ),
-        ),
       ),
     );
   }

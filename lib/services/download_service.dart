@@ -3,10 +3,9 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:ffmpeg_kit_flutter_new_https/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_https/ffmpeg_session.dart';
 import 'package:ffmpeg_kit_flutter_new_https/ffprobe_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_https/statistics.dart';
 import 'package:ffmpeg_kit_flutter_new_https/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new_https/statistics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -351,14 +350,15 @@ class DownloadService {
         }
       },
       (log) {
-        // Optional per-log callback; you can inspect log.getMessage() if needed.
         if (kDebugMode) {
           // print(log.getMessage());
         }
       },
       (Statistics statistics) {
         // Real-time statistics callback: map current time to 0–1 progress.
-        if (onProgress != null && totalDurationMs != null && totalDurationMs > 0) {
+        if (onProgress != null &&
+            totalDurationMs != null &&
+            totalDurationMs > 0) {
           final currentTimeMs = statistics.getTime().toInt();
           double p = currentTimeMs / totalDurationMs;
           if (p < 0.0) p = 0.0;
@@ -550,5 +550,20 @@ class DownloadService {
     } finally {
       _currentDioCancelToken = null;
     }
+  }
+
+  // --- 5. SAVE TO GALLERY (stub; implement with your preferred plugin) ---
+  Future<String> saveToGallery(String tempFilePath) async {
+    final file = File(tempFilePath);
+    if (!await file.exists()) {
+      throw Exception('Temporary file not found for gallery save.');
+    }
+
+    // For now, this is a stub that just returns the same path.
+    // You can integrate image_gallery_saver / gallery_saver / MediaStore here.
+    // e.g., copy to a "Downloads" directory, or call platform channels.
+
+    // Example: just keep file in place and return path.
+    return tempFilePath;
   }
 }

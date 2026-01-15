@@ -5,9 +5,10 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:http/http.dart' as http;
-import 'package:video_downloader/services/download_service.dart';
 import 'package:video_downloader/services/database_service.dart';
+import 'package:video_downloader/services/download_service.dart';
 import 'package:video_downloader/secrets.dart';
+
 import '../services/stats_service.dart';
 
 // --- Enums & Providers ---
@@ -21,21 +22,23 @@ final statsServiceProvider = Provider((ref) => StatsService());
 
 final transferPhaseProvider =
     StateNotifierProvider<StateController<TransferPhase>, TransferPhase>(
-      (ref) => StateController(TransferPhase.idle),
-    );
+  (ref) => StateController(TransferPhase.idle),
+);
 
 final downloadProgressProvider =
     StateNotifierProvider<StateController<double>, double>(
-      (ref) => StateController(0.0),
-    );
+  (ref) => StateController(0.0),
+);
 
 final urlProvider = StateProvider<String>((ref) => '');
 final tokenProvider = StateProvider<String>((ref) => kBotToken);
 final chatIdProvider = StateProvider<String>((ref) => '');
-final loadingProvider = StateNotifierProvider<StateController<bool>, bool>(
+final loadingProvider =
+    StateNotifierProvider<StateController<bool>, bool>(
   (ref) => StateController(false),
 );
-final messageProvider = StateNotifierProvider<StateController<String>, String>(
+final messageProvider =
+    StateNotifierProvider<StateController<String>, String>(
   (ref) => StateController(''),
 );
 final downloadServiceProvider = Provider((ref) => DownloadService());
@@ -50,20 +53,27 @@ final downloadModeProvider = StateProvider<DownloadMode>(
 // Thumbnail URL
 final thumbnailUrlProvider =
     StateNotifierProvider<StateController<String?>, String?>(
-      (ref) => StateController<String?>(null),
-    );
+  (ref) => StateController<String?>(null),
+);
 
 // Video caption from platform (raw, will be cleaned before send)
 final videoCaptionProvider =
     StateNotifierProvider<StateController<String?>, String?>(
-      (ref) => StateController<String?>(null),
-    );
+  (ref) => StateController<String?>(null),
+);
 
 // Save with caption flag
 final saveWithCaptionProvider =
     StateNotifierProvider<StateController<bool>, bool>(
-      (ref) => StateController<bool>(true),
-    );
+  (ref) => StateController<bool>(true),
+);
+
+// New: store last downloaded temp paths (for post-download actions)
+final lastVideoPathProvider = StateProvider<String?>((ref) => null);
+final lastAudioPathProvider = StateProvider<String?>((ref) => null);
+
+// New: flag to show post-download dialog
+final postDownloadReadyProvider = StateProvider<bool>((ref) => false);
 
 class HomeController {
   final WidgetRef ref;
@@ -114,7 +124,8 @@ class HomeController {
       ref.read(isChatIdSavedProvider.notifier).state = true;
       ref.read(messageProvider.notifier).state = 'msg_saved_chatid'.tr();
     } catch (_) {
-      ref.read(messageProvider.notifier).state = 'msg_error_chatid_save.'.tr();
+      ref.read(messageProvider.notifier).state =
+          'msg_error_chatid_save.'.tr();
     }
   }
 
@@ -247,7 +258,7 @@ class HomeController {
     ref.read(thumbnailUrlProvider.notifier).state = null;
   }
 
-  // --- Download / Upload ---
+  // --- Download only (no automatic upload) ---
 
   Future<void> handleDownload() async {
     final url = ref.read(urlProvider);
@@ -264,25 +275,21 @@ class HomeController {
     // fresh run: reset flags + UI
     service.resetCancelFlags();
     ref.read(downloadProgressProvider.notifier).state = 0.0;
-    ref.read(transferPhaseProvider.notifier).state = TransferPhase.downloading;
+    ref.read(transferPhaseProvider.notifier).state =
+        TransferPhase.downloading;
     ref.read(loadingProvider.notifier).state = true;
     ref.read(messageProvider.notifier).state = "msg_downloading".tr();
+    ref.read(postDownloadReadyProvider.notifier).state = false;
+    ref.read(lastVideoPathProvider.notifier).state = null;
+    ref.read(lastAudioPathProvider.notifier).state = null;
 
     String? tempVideoPath;
     String? tempAudioPath;
 
     try {
-      final token = ref.read(tokenProvider);
-      final chatId = ref.read(chatIdProvider);
-      final saveWithCaption = ref.read(saveWithCaptionProvider);
-      final userCaption = ref.read(videoCaptionProvider);
-
-      if (token.isEmpty || chatId.isEmpty) {
-        throw Exception("msg_error_chat_id".tr());
-      }
-
       void onDownloadProgress(double p) {
-        ref.read(downloadProgressProvider.notifier).state = p.clamp(0.0, 1.0);
+        ref.read(downloadProgressProvider.notifier).state =
+            p.clamp(0.0, 1.0);
       }
 
       // ---- DOWNLOAD PHASE ----
@@ -297,17 +304,16 @@ class HomeController {
           // Extraction phase
           ref.read(transferPhaseProvider.notifier).state =
               TransferPhase.extracting;
-          ref.read(messageProvider.notifier).state = "Extracting audio...";
+          ref.read(messageProvider.notifier).state =
+              "Extracting audio..."; // local text
           ref.read(downloadProgressProvider.notifier).state = 0.0;
 
           // Real-time extraction progress from FFmpeg statistics
           tempAudioPath = await service.extractMp3FromVideo(
             tempVideoPath,
             onProgress: (p) {
-              ref.read(downloadProgressProvider.notifier).state = p.clamp(
-                0.0,
-                1.0,
-              );
+              ref.read(downloadProgressProvider.notifier).state =
+                  p.clamp(0.0, 1.0);
             },
           );
 
@@ -342,40 +348,124 @@ class HomeController {
 
       ref.read(downloadProgressProvider.notifier).state = 1.0;
 
-      // ---- UPLOAD PHASE ----
-      ref.read(transferPhaseProvider.notifier).state = TransferPhase.uploading;
+      // Store paths for later actions
+      ref.read(lastVideoPathProvider.notifier).state = tempVideoPath;
+      ref.read(lastAudioPathProvider.notifier).state = tempAudioPath;
+
+      // Mark ready for post-download dialog
+      ref.read(postDownloadReadyProvider.notifier).state = true;
+
+      // Message for user
+      ref.read(messageProvider.notifier).state =
+          "Download completed. Choose what to do next.".tr();
+
+      try {
+        final linkTypeValue = getLinkType(url);
+        await ref.read(statsServiceProvider).incrementPlatform(
+              linkTypeValue,
+            );
+      } catch (_) {}
+
+      // Do not clear URL & thumbnail yet; user may want to re-use same link.
+      ref.read(thumbnailUrlProvider.notifier).state =
+          ref.read(thumbnailUrlProvider);
+    } catch (e) {
+      final msg = e.toString();
+
+      String userMessage;
+      if (msg.contains('CANCELLED')) {
+        userMessage = "msg_error_cancelled".tr();
+      } else if (msg.contains('Chat ID')) {
+        userMessage = "msg_error_chat_id".tr();
+      } else if (msg.contains('Network') || msg.contains('SocketException')) {
+        userMessage = "msg_error_network".tr();
+      } else {
+        userMessage = "msg_error_unknown".tr() + ' ($msg)';
+      }
+
+      ref.read(messageProvider.notifier).state = userMessage;
+
+      if (tempVideoPath != null && await File(tempVideoPath).exists()) {
+        await File(tempVideoPath).delete();
+      }
+      if (tempAudioPath != null && await File(tempAudioPath).exists()) {
+        await File(tempAudioPath).delete();
+      }
+
+      ref.read(thumbnailUrlProvider.notifier).state = null;
+      ref.read(videoCaptionProvider.notifier).state = null;
+      ref.read(urlProvider.notifier).state = '';
+      ref.read(lastVideoPathProvider.notifier).state = null;
+      ref.read(lastAudioPathProvider.notifier).state = null;
+      ref.read(postDownloadReadyProvider.notifier).state = false;
+    } finally {
+      ref.read(loadingProvider.notifier).state = false;
+      ref.read(transferPhaseProvider.notifier).state = TransferPhase.idle;
       ref.read(downloadProgressProvider.notifier).state = 0.0;
+    }
+  }
 
-      void onUploadProgress(double p) {
-        ref.read(downloadProgressProvider.notifier).state = p.clamp(0.0, 1.0);
+  // --- Post-download: Save to Telegram ---
+
+  Future<void> handleSaveToTelegram() async {
+    final service = ref.read(downloadServiceProvider);
+    final token = ref.read(tokenProvider);
+    final chatId = ref.read(chatIdProvider);
+    final saveWithCaption = ref.read(saveWithCaptionProvider);
+    final userCaption = ref.read(videoCaptionProvider);
+
+    final tempVideoPath = ref.read(lastVideoPathProvider);
+    final tempAudioPath = ref.read(lastAudioPathProvider);
+
+    if (tempVideoPath == null && tempAudioPath == null) {
+      ref.read(messageProvider.notifier).state =
+          "No downloaded media to send.".tr();
+      return;
+    }
+
+    if (token.isEmpty || chatId.isEmpty) {
+      ref.read(messageProvider.notifier).state =
+          "msg_error_chat_id".tr();
+      return;
+    }
+
+    String _removeHashtags(String text) {
+      final withoutTags = text.replaceAll(RegExp(r'#\S+'), '');
+      return withoutTags.replaceAll(RegExp(r'\s+'), ' ').trim();
+    }
+
+    String? buildCaptionFromFile(String? path) {
+      if (!saveWithCaption) return null;
+
+      if (userCaption != null && userCaption.trim().isNotEmpty) {
+        final cleaned = _removeHashtags(userCaption);
+        if (cleaned.isNotEmpty) return cleaned;
       }
 
-      String _removeHashtags(String text) {
-        final withoutTags = text.replaceAll(RegExp(r'#\S+'), '');
-        return withoutTags.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (path != null) {
+        final name = path.split('/').last;
+        final base = name
+            .replaceAll('.mp4', '')
+            .replaceAll('.m4a', '')
+            .replaceAll('.mp3', '');
+        final cleaned = _removeHashtags(base);
+        return cleaned.isNotEmpty ? cleaned : base;
       }
+      return null;
+    }
 
-      String? buildCaptionFromFile(String? path) {
-        if (!saveWithCaption) return null;
+    ref.read(transferPhaseProvider.notifier).state =
+        TransferPhase.uploading;
+    ref.read(downloadProgressProvider.notifier).state = 0.0;
 
-        if (userCaption != null && userCaption.trim().isNotEmpty) {
-          final cleaned = _removeHashtags(userCaption);
-          if (cleaned.isNotEmpty) return cleaned;
-        }
+    void onUploadProgress(double p) {
+      ref.read(downloadProgressProvider.notifier).state =
+          p.clamp(0.0, 1.0);
+    }
 
-        if (path != null) {
-          final name = path.split('/').last;
-          final base = name
-              .replaceAll('.mp4', '')
-              .replaceAll('.m4a', '')
-              .replaceAll('.mp3', '');
-          final cleaned = _removeHashtags(base);
-          return cleaned.isNotEmpty ? cleaned : base;
-        }
-        return null;
-      }
-
-      final isBoth = mode == DownloadMode.both;
+    try {
+      final bool isBoth =
+          tempVideoPath != null && tempAudioPath != null;
 
       // Video first (if any)
       if (tempVideoPath != null) {
@@ -411,43 +501,93 @@ class HomeController {
       ref.read(downloadProgressProvider.notifier).state = 1.0;
       ref.read(messageProvider.notifier).state = "msg_successed".tr();
 
-      try {
-        final linkTypeValue = getLinkType(url);
-        await ref.read(statsServiceProvider).incrementPlatform(linkTypeValue);
-      } catch (_) {}
-
-      ref.read(thumbnailUrlProvider.notifier).state = null;
+      // Clear last paths after successful send
+      ref.read(lastVideoPathProvider.notifier).state = null;
+      ref.read(lastAudioPathProvider.notifier).state = null;
+      ref.read(postDownloadReadyProvider.notifier).state = false;
       ref.read(videoCaptionProvider.notifier).state = null;
       ref.read(urlProvider.notifier).state = '';
+      ref.read(thumbnailUrlProvider.notifier).state = null;
     } catch (e) {
       final msg = e.toString();
-
       String userMessage;
       if (msg.contains('CANCELLED')) {
         userMessage = "msg_error_cancelled".tr();
       } else if (msg.contains('Chat ID')) {
         userMessage = "msg_error_chat_id".tr();
-      } else if (msg.contains('Network') || msg.contains('SocketException')) {
+      } else if (msg.contains('Network') ||
+          msg.contains('SocketException')) {
         userMessage = "msg_error_network".tr();
       } else {
         userMessage = "msg_error_unknown".tr() + ' ($msg)';
       }
-
       ref.read(messageProvider.notifier).state = userMessage;
-
-      if (tempVideoPath != null && await File(tempVideoPath).exists()) {
-        await File(tempVideoPath).delete();
-      }
-      if (tempAudioPath != null && await File(tempAudioPath).exists()) {
-        await File(tempAudioPath).delete();
-      }
-
-      ref.read(thumbnailUrlProvider.notifier).state = null;
-      ref.read(videoCaptionProvider.notifier).state = null;
-      ref.read(urlProvider.notifier).state = '';
     } finally {
-      ref.read(loadingProvider.notifier).state = false;
-      ref.read(transferPhaseProvider.notifier).state = TransferPhase.idle;
+      ref.read(transferPhaseProvider.notifier).state =
+          TransferPhase.idle;
+      ref.read(downloadProgressProvider.notifier).state = 0.0;
+    }
+  }
+
+  // --- Post-download: Save to Gallery ---
+
+  Future<void> handleSaveToGallery() async {
+    final service = ref.read(downloadServiceProvider);
+    final tempVideoPath = ref.read(lastVideoPathProvider);
+    final tempAudioPath = ref.read(lastAudioPathProvider);
+
+    if (tempVideoPath == null && tempAudioPath == null) {
+      ref.read(messageProvider.notifier).state =
+          "No downloaded media to save.".tr();
+      return;
+    }
+
+    ref.read(transferPhaseProvider.notifier).state =
+        TransferPhase.uploading;
+    ref.read(downloadProgressProvider.notifier).state = 0.0;
+
+    try {
+      int filesCount = 0;
+      int doneCount = 0;
+
+      if (tempVideoPath != null) filesCount++;
+      if (tempAudioPath != null) filesCount++;
+
+      Future<void> _saveOne(String path) async {
+        await service.saveToGallery(path);
+        doneCount++;
+        ref.read(downloadProgressProvider.notifier).state =
+            (doneCount / filesCount).clamp(0.0, 1.0);
+      }
+
+      if (tempVideoPath != null) {
+        ref.read(messageProvider.notifier).state =
+            "Saving video to gallery...".tr();
+        await _saveOne(tempVideoPath);
+      }
+
+      if (tempAudioPath != null) {
+        ref.read(messageProvider.notifier).state =
+            "Saving audio to gallery...".tr();
+        await _saveOne(tempAudioPath);
+      }
+
+      ref.read(messageProvider.notifier).state =
+          "Saved to gallery.".tr();
+      ref.read(downloadProgressProvider.notifier).state = 1.0;
+
+      // Keep files; gallery saver may have just registered them.
+      ref.read(lastVideoPathProvider.notifier).state = null;
+      ref.read(lastAudioPathProvider.notifier).state = null;
+      ref.read(postDownloadReadyProvider.notifier).state = false;
+    } catch (e) {
+      final msg = e.toString();
+      String userMessage =
+          "Failed to save to gallery.".tr() + ' ($msg)';
+      ref.read(messageProvider.notifier).state = userMessage;
+    } finally {
+      ref.read(transferPhaseProvider.notifier).state =
+          TransferPhase.idle;
       ref.read(downloadProgressProvider.notifier).state = 0.0;
     }
   }
@@ -456,7 +596,8 @@ class HomeController {
     final service = ref.read(downloadServiceProvider);
     service.cancelActiveOperation();
 
-    ref.read(messageProvider.notifier).state = "msg_error_cancelled".tr();
+    ref.read(messageProvider.notifier).state =
+        "msg_error_cancelled".tr();
     ref.read(transferPhaseProvider.notifier).state = TransferPhase.idle;
     ref.read(loadingProvider.notifier).state = false;
     ref.read(downloadProgressProvider.notifier).state = 0.0;

@@ -1,5 +1,5 @@
 import 'dart:ui';
-
+import '../widgets/post_download_dialog.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +26,8 @@ class _HomePageState extends ConsumerState<HomePage>
   late final AnimationController _bgController;
   late final Animation<double> _bgAnimation;
   late final HomeController _controller;
+
+  bool _dialogShowing = false;
 
   @override
   void initState() {
@@ -65,15 +67,46 @@ class _HomePageState extends ConsumerState<HomePage>
     return scale;
   }
 
+  void _maybeShowPostDownloadDialog() {
+    final ready = ref.read(postDownloadReadyProvider);
+    final lastVideoPath = ref.read(lastVideoPathProvider);
+    final lastAudioPath = ref.read(lastAudioPathProvider);
+
+    if (!ready) return;
+    if (lastVideoPath == null && lastAudioPath == null) return;
+    if (_dialogShowing) return;
+
+    _dialogShowing = true;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => HomePostDownloadDialog(
+        controller: _controller,
+        mediaScale: _mediaScale,
+      ),
+    ).whenComplete(() {
+      _dialogShowing = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUrl = ref.watch(urlProvider);
+    final postReady = ref.watch(postDownloadReadyProvider);
 
     if (_urlController.text != currentUrl) {
       _urlController.text = currentUrl;
       _urlController.selection = TextSelection.fromPosition(
         TextPosition(offset: _urlController.text.length),
       );
+    }
+
+    // Trigger dialog after build when ready
+    if (postReady) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _maybeShowPostDownloadDialog();
+      });
     }
 
     return Scaffold(
@@ -134,8 +167,8 @@ class _HomePageState extends ConsumerState<HomePage>
                                     SizedBox(height: 24 * scale),
                                     Row(
                                       children: [
-                                        Expanded(
-                                          child: const HomeTutorialButton(),
+                                        const Expanded(
+                                          child: HomeTutorialButton(),
                                         ),
                                         SizedBox(width: 12 * scale),
                                         const Expanded(

@@ -60,7 +60,7 @@ class _RootGate extends StatelessWidget {
         if (isMaintenance) {
           return const MaintenanceScreen();
         }
-        return const SplashScreen(); // your normal app shell
+        return const SplashScreen(); //normal app shell
       },
     );
   }

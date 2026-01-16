@@ -48,9 +48,12 @@ class HomeActionButton extends ConsumerWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.send,
-                            size: 22 * scale, color: Colors.white),
-                        SizedBox(width: 12 * scale),
+                        Icon(
+                          Icons.download,
+                          size: 22 * scale,
+                          color: Colors.white,
+                        ),
+                        SizedBox(width: 5 * scale),
                         Text(
                           isLoading ? 'Processing...' : "btn_download".tr(),
                           style: TextStyle(

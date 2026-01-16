@@ -12,58 +12,44 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_downloader/secrets.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
-/// Signature for progress callback: value in range 0.0–1.0.
-/// Will be called multiple times while downloading or uploading, and 1.0 at the end.
 typedef DownloadProgressCallback = void Function(double progress);
 
 class DownloadService {
   final Dio _dio = Dio();
   final YoutubeExplode _yt = YoutubeExplode();
 
-  // Current active cancel tokens / flags
   CancelToken? _currentDioCancelToken;
   bool _youtubeCancelRequested = false;
 
-  // Reset cancel flags for a fresh run
   void resetCancelFlags() {
     _youtubeCancelRequested = false;
     _currentDioCancelToken = null;
   }
 
-  // Expose cancel method
   void cancelActiveOperation() {
     _currentDioCancelToken?.cancel('User cancelled');
     _youtubeCancelRequested = true;
   }
 
-  // Remove hashtags and normalize spaces in titles before sanitizing.
+  // ----------------- Helpers -----------------
+
   String _cleanTitleForFilename(String title) {
-    // Drop hashtags like #abc123
     var text = title.replaceAll(RegExp(r'#\S+'), '');
-    // Collapse whitespace
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     return text;
   }
 
-  // Filename sanitization
   String _sanitizeTitle(String title) {
-    // First remove hashtags and tidy spaces.
     title = _cleanTitleForFilename(title);
-
-    // Replace only truly illegal filename chars with a space.
     final illegalCharsRegex = RegExp(r'[<>:"/\\|?*]|\.$');
     String safeTitle = title.replaceAll(illegalCharsRegex, ' ');
-
-    // Collapse multiple spaces
     safeTitle = safeTitle.replaceAll(RegExp(r'\s+'), ' ').trim();
-
     if (safeTitle.isEmpty) {
       return 'Video Download';
     }
     return safeTitle;
   }
 
-  // --- Core HTTP download with real-time progress + cancel ---
   Future<String> _httpDownloadToFile(
     String directUrl,
     String fileName, {
@@ -100,7 +86,6 @@ class DownloadService {
         if (kDebugMode) {
           print('HTTP download cancelled: ${e.message}');
         }
-        // Propagate a specific cancel exception upwards
         throw Exception('CANCELLED');
       }
       rethrow;
@@ -112,7 +97,8 @@ class DownloadService {
     return filePath;
   }
 
-  // --- Facebook API Logic (Web Scraping) ---
+  // ----------------- Facebook -----------------
+
   Future<Map<String, String>> _getFacebookDownloadUrl(String videoUrl) async {
     try {
       final url = Uri.parse(videoUrl);
@@ -170,7 +156,20 @@ class DownloadService {
     }
   }
 
-  // --- TikTok API Logic (tikwm.com) ---
+  Future<String> downloadFacebookVideo(
+    String url, {
+    DownloadProgressCallback? onProgress,
+  }) async {
+    final linkData = await _getFacebookDownloadUrl(url);
+    final directUrl = linkData['url']!;
+    final videoTitle = linkData['title']!;
+    final safeTitle = _sanitizeTitle(videoTitle);
+    final fileName = '$safeTitle.mp4';
+    return _httpDownloadToFile(directUrl, fileName, onProgress: onProgress);
+  }
+
+  // ----------------- TikTok -----------------
+
   Future<Map<String, String>> _getTiktokDownloadUrl(String videoUrl) async {
     try {
       final apiUrl = tiktokApi;
@@ -212,8 +211,21 @@ class DownloadService {
     }
   }
 
-  // --- 1. YOUTUBE DOWNLOAD (video with audio) with real-time progress + cancel ---
-  Future<String> downloadVideo(
+  Future<String> downloadTiktokVideo(
+    String url, {
+    DownloadProgressCallback? onProgress,
+  }) async {
+    final linkData = await _getTiktokDownloadUrl(url);
+    final directUrl = linkData['url']!;
+    final videoTitle = linkData['title']!;
+    final safeTitle = _sanitizeTitle(videoTitle);
+    final fileName = '$safeTitle.mp4';
+    return _httpDownloadToFile(directUrl, fileName, onProgress: onProgress);
+  }
+
+  // ----------------- YouTube -----------------
+
+  Future<String> downloadYoutubeMuxed(
     String url, {
     DownloadProgressCallback? onProgress,
   }) async {
@@ -276,7 +288,8 @@ class DownloadService {
     }
   }
 
-  // --- helper: get media duration in milliseconds using FFprobe ---
+  // ----------------- FFmpeg (extract audio) -----------------
+
   Future<int?> _getMediaDurationMillis(String inputPath) async {
     try {
       final session = await FFprobeKit.getMediaInformation(inputPath);
@@ -296,7 +309,6 @@ class DownloadService {
     }
   }
 
-  // --- Extract audio from a downloaded video (YouTube muxed, Facebook, TikTok, etc.) ---
   Future<String> extractMp3FromVideo(
     String inputVideoPath, {
     DownloadProgressCallback? onProgress,
@@ -308,20 +320,16 @@ class DownloadService {
 
     final dir = await getTemporaryDirectory();
     final baseName = inputVideoPath.split('/').last.replaceAll('.mp4', '');
-    // use m4a container + AAC codec (widely available in non‑GPL builds)
     final outputPath = '${dir.path}/$baseName.m4a';
 
-    // Try to get duration for accurate progress
     final totalDurationMs = await _getMediaDurationMillis(inputVideoPath);
 
     if (kDebugMode) {
       print('Starting audio extraction. Duration(ms) = $totalDurationMs');
     }
 
-    // Reset initial progress
     onProgress?.call(0.0);
 
-    // -vn: no video, -c:a aac: use AAC encoder
     final command = '-i "$inputVideoPath" -vn -c:a aac -b:a 192k "$outputPath"';
 
     final completer = Completer<String>();
@@ -329,7 +337,6 @@ class DownloadService {
     FFmpegKit.executeAsync(
       command,
       (session) async {
-        // completion callback
         final returnCode = await session.getReturnCode();
 
         if (ReturnCode.isSuccess(returnCode)) {
@@ -355,20 +362,17 @@ class DownloadService {
         }
       },
       (Statistics statistics) {
-        // Real-time statistics callback: map current time to 0–1 progress.
         if (onProgress != null &&
             totalDurationMs != null &&
             totalDurationMs > 0) {
           final currentTimeMs = statistics.getTime().toInt();
           double p = currentTimeMs / totalDurationMs;
           if (p < 0.0) p = 0.0;
-          if (p > 0.99) p = 0.99; // leave 1.0 for completion callback
+          if (p > 0.99) p = 0.99;
           onProgress(p);
         }
       },
-    ).then((_) {
-      // nothing extra here; completion handled by completer
-    }).catchError((e) {
+    ).then((_) {}).catchError((e) {
       if (!completer.isCompleted) {
         completer.completeError(e);
       }
@@ -377,37 +381,8 @@ class DownloadService {
     return completer.future;
   }
 
-  // --- 2. FACEBOOK DOWNLOAD with real-time progress + cancel ---
-  Future<String> downloadFacebookVideo(
-    String url, {
-    DownloadProgressCallback? onProgress,
-  }) async {
-    final linkData = await _getFacebookDownloadUrl(url);
-    final directUrl = linkData['url']!;
-    final videoTitle = linkData['title']!;
+  // ----------------- Telegram: video/audio -----------------
 
-    final safeTitle = _sanitizeTitle(videoTitle);
-    final fileName = '$safeTitle.mp4';
-
-    return _httpDownloadToFile(directUrl, fileName, onProgress: onProgress);
-  }
-
-  // --- 3. TIKTOK DOWNLOAD with real-time progress + cancel ---
-  Future<String> downloadTiktokVideo(
-    String url, {
-    DownloadProgressCallback? onProgress,
-  }) async {
-    final linkData = await _getTiktokDownloadUrl(url);
-    final directUrl = linkData['url']!;
-    final videoTitle = linkData['title']!;
-
-    final safeTitle = _sanitizeTitle(videoTitle);
-    final fileName = '$safeTitle.mp4';
-
-    return _httpDownloadToFile(directUrl, fileName, onProgress: onProgress);
-  }
-
-  // --- 4a. SAVE VIDEO TO TELEGRAM BOT with upload progress + cancel ---
   Future<void> saveToBot(
     String tempFilePath,
     String botToken,
@@ -453,9 +428,8 @@ class DownloadService {
         },
       );
 
-      if (await file.exists()) {
-        await file.delete();
-      }
+      // IMPORTANT: Do NOT delete here so user can still save to gallery if they want.
+      // Deletion will be controlled by higher-level flow if needed.
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
         if (kDebugMode) {
@@ -463,16 +437,10 @@ class DownloadService {
         }
         throw Exception('CANCELLED');
       }
-      if (await file.exists()) {
-        await file.delete();
-      }
       throw Exception('Chat ID မှားနေပါသည်။');
     } catch (e) {
       if (kDebugMode) {
         print('Telegram Upload Error: $e');
-      }
-      if (await file.exists()) {
-        await file.delete();
       }
       throw Exception('Chat ID မှားနေပါသည်။');
     } finally {
@@ -480,7 +448,6 @@ class DownloadService {
     }
   }
 
-  // --- 4b. SAVE AUDIO TO TELEGRAM BOT with upload progress + cancel ---
   Future<void> saveAudioToBot(
     String tempFilePath,
     String botToken,
@@ -503,7 +470,8 @@ class DownloadService {
 
       final Map<String, dynamic> fields = {
         'chat_id': chatId,
-        'audio': await MultipartFile.fromFile(tempFilePath, filename: fileName),
+        'audio':
+            await MultipartFile.fromFile(tempFilePath, filename: fileName),
       };
 
       if (caption != null && caption.trim().isNotEmpty) {
@@ -525,9 +493,7 @@ class DownloadService {
         },
       );
 
-      if (await file.exists()) {
-        await file.delete();
-      }
+      // Same as video: do not delete here, so gallery can still use it.
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
         if (kDebugMode) {
@@ -535,16 +501,10 @@ class DownloadService {
         }
         throw Exception('CANCELLED');
       }
-      if (await file.exists()) {
-        await file.delete();
-      }
       throw Exception('Chat ID မှားနေပါသည်။');
     } catch (e) {
       if (kDebugMode) {
         print('Telegram Audio Upload Error: $e');
-      }
-      if (await file.exists()) {
-        await file.delete();
       }
       throw Exception('Chat ID မှားနေပါသည်။');
     } finally {
@@ -552,18 +512,16 @@ class DownloadService {
     }
   }
 
-  // --- 5. SAVE TO GALLERY (stub; implement with your preferred plugin) ---
+  // ----------------- Gallery -----------------
+
   Future<String> saveToGallery(String tempFilePath) async {
     final file = File(tempFilePath);
     if (!await file.exists()) {
       throw Exception('Temporary file not found for gallery save.');
     }
 
-    // For now, this is a stub that just returns the same path.
-    // You can integrate image_gallery_saver / gallery_saver / MediaStore here.
-    // e.g., copy to a "Downloads" directory, or call platform channels.
-
-    // Example: just keep file in place and return path.
+    // For now, just return the same path (stub).
+    // Integrate real gallery plugin here if needed.
     return tempFilePath;
   }
 }

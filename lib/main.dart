@@ -50,7 +50,7 @@ class KDownloaderApp extends StatelessWidget {
 }
 
 class _RootGate extends StatefulWidget {
-  const _RootGate({super.key});
+  const _RootGate();
 
   @override
   State<_RootGate> createState() => _RootGateState();

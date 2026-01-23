@@ -1,4 +1,5 @@
 import 'dart:ui';
+
 import '../widgets/post_download_dialog.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -87,6 +88,8 @@ class _HomePageState extends ConsumerState<HomePage>
       ),
     ).whenComplete(() {
       _dialogShowing = false;
+      // critical: prevent re-show on rebuild / language change
+      ref.read(postDownloadReadyProvider.notifier).state = false;
     });
   }
 

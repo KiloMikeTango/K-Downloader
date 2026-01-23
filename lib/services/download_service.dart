@@ -516,57 +516,54 @@ class DownloadService {
 
   // ----------------- Gallery -----------------
 
- Future<String> saveToGallery(String tempFilePath) async {
-  final file = File(tempFilePath);
-  if (!await file.exists()) {
-    throw Exception('Temporary file not found for gallery save.');
-  }
+  Future<String> saveToGallery(String tempFilePath) async {
+    final file = File(tempFilePath);
+    if (!await file.exists()) {
+      throw Exception('Temporary file not found for gallery save.');
+    }
 
-  // Ask permission again here if needed
-  if (Platform.isAndroid || Platform.isIOS) {
-    if (Platform.isAndroid) {
-      final androidInfo = await DeviceInfoPlugin().androidInfo;
-      final sdkInt = androidInfo.version.sdkInt;
+    // Ask permission again here if needed
+    if (Platform.isAndroid || Platform.isIOS) {
+      if (Platform.isAndroid) {
+        final androidInfo = await DeviceInfoPlugin().androidInfo;
+        final sdkInt = androidInfo.version.sdkInt;
 
-      if (sdkInt >= 33) {
-        final statuses = await [
-          Permission.photos,
-          Permission.videos,
-        ].request();
-        final granted =
-            statuses.values.every((status) => status.isGranted);
-        if (!granted) {
-          throw Exception('Gallery permission not granted.');
+        if (sdkInt >= 33) {
+          final statuses = await [
+            Permission.photos,
+            Permission.videos,
+          ].request();
+          final granted = statuses.values.every((status) => status.isGranted);
+          if (!granted) {
+            throw Exception('Gallery permission not granted.');
+          }
+        } else {
+          final status = await Permission.storage.request();
+          if (!status.isGranted) {
+            throw Exception('Storage permission not granted.');
+          }
         }
-      } else {
-        final status = await Permission.storage.request();
+      } else if (Platform.isIOS) {
+        final status = await Permission.photosAddOnly.request();
         if (!status.isGranted) {
-          throw Exception('Storage permission not granted.');
+          throw Exception('Photos permission not granted.');
         }
-      }
-    } else if (Platform.isIOS) {
-      final status = await Permission.photosAddOnly.request();
-      if (!status.isGranted) {
-        throw Exception('Photos permission not granted.');
       }
     }
+
+    final fileName = tempFilePath.split('/').last;
+
+    final result = await SaverGallery.saveFile(
+      filePath: tempFilePath,
+      fileName: fileName,
+      androidRelativePath: "Movies/K Downloader",
+      skipIfExists: true,
+    );
+
+    if (result.isSuccess != true) {
+      throw Exception('Failed to save file to gallery.');
+    }
+
+    return tempFilePath;
   }
-
-  final fileName = tempFilePath.split('/').last;
-
-  final result = await SaverGallery.saveFile(
-    filePath: tempFilePath,
-    fileName: fileName,
-    androidRelativePath: "Videos/K Downloader",
-    skipIfExists: true,
-  );
-
-  if (result.isSuccess != true) {
-    throw Exception('Failed to save file to gallery.');
-  }
-
-  return tempFilePath;
-}
-
-
 }

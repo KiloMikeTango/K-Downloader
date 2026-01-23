@@ -25,6 +25,7 @@ class HomePostDownloadDialog extends ConsumerWidget {
     final phase = ref.watch(transferPhaseProvider);
     final progress = ref.watch(downloadProgressProvider);
     final isUploading = phase == TransferPhase.uploading;
+    final isGalleryUploading = ref.watch(isGalleryUploadingProvider);
     final percent = (progress * 100).clamp(0, 100).toInt();
 
     return Center(
@@ -56,7 +57,12 @@ class HomePostDownloadDialog extends ConsumerWidget {
                       ),
                     ),
                     GestureDetector(
-                      onTap: () => Navigator.of(context).pop(),
+                      onTap: () {
+                        // ensure dialog will not show again on rebuild
+                        ref.read(postDownloadReadyProvider.notifier).state =
+                            false;
+                        Navigator.of(context).pop();
+                      },
                       child: Container(
                         padding: EdgeInsets.all(6 * scale),
                         decoration: BoxDecoration(
@@ -76,18 +82,7 @@ class HomePostDownloadDialog extends ConsumerWidget {
                     ),
                   ],
                 ),
-                SizedBox(height: 6 * scale),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'You can send to Telegram or save to your gallery.'.tr(),
-                    style: TextStyle(
-                      fontSize: 12.5 * scale,
-                      color: Colors.white.withOpacity(0.82),
-                      height: 1.35,
-                    ),
-                  ),
-                ),
+
                 SizedBox(height: 14 * scale),
 
                 // Telegram button (primary)
@@ -141,7 +136,7 @@ class HomePostDownloadDialog extends ConsumerWidget {
                   Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      '${'Sending to Telegram'.tr()} • $percent%',
+                      '${isGalleryUploading ? 'saving_video_to_gallery'.tr() : 'saving_video_to_telegram'.tr()} • $percent%',
                       style: TextStyle(
                         fontSize: 11.5 * scale,
                         color: Colors.white.withOpacity(0.90),
@@ -187,7 +182,7 @@ class _GlassActionButton extends StatelessWidget {
       height: 46 * scale,
       width: double.infinity,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(999 * scale),
+        borderRadius: BorderRadius.circular(500 * scale),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 14 * scale, sigmaY: 14 * scale),
           child: AnimatedContainer(
@@ -207,7 +202,7 @@ class _GlassActionButton extends StatelessWidget {
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                borderRadius: BorderRadius.circular(999 * scale),
+                borderRadius: BorderRadius.circular(500 * scale),
                 onTap: enabled ? onTap : null,
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16 * scale),

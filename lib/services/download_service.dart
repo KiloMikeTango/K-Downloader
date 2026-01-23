@@ -8,7 +8,7 @@ import 'package:ffmpeg_kit_flutter_new_https/statistics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:device_info_plus/device_info_plus.dart';
-// import 'package:path/path.dart' as p;
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:saver_gallery/saver_gallery.dart';
@@ -53,13 +53,30 @@ class DownloadService {
     return safeTitle;
   }
 
+  Future<String> _uniqueTempPath(String fileName) async {
+    final dir = await getTemporaryDirectory();
+    final dirPath = dir.path;
+
+    final base = p.basenameWithoutExtension(fileName);
+    final ext = p.extension(fileName);
+
+    var candidate = fileName;
+    var counter = 1;
+
+    while (await File(p.join(dirPath, candidate)).exists()) {
+      candidate = '$base ($counter)$ext';
+      counter++;
+    }
+
+    return p.join(dirPath, candidate);
+  }
+
   Future<String> _httpDownloadToFile(
     String directUrl,
     String fileName, {
     DownloadProgressCallback? onProgress,
   }) async {
-    final dir = await getTemporaryDirectory();
-    final filePath = '${dir.path}/$fileName';
+    final filePath = await _uniqueTempPath(fileName);
 
     if (kDebugMode) {
       print('Starting HTTP download to: $filePath');
@@ -240,9 +257,8 @@ class DownloadService {
 
     final streamInfo = manifest.muxed.sortByVideoQuality().reversed.first;
 
-    final dir = await getTemporaryDirectory();
     final safeTitle = _sanitizeTitle(video.title);
-    final filePath = '${dir.path}/$safeTitle.mp4';
+    final filePath = await _uniqueTempPath('$safeTitle.mp4');
     final file = File(filePath);
 
     if (kDebugMode) {
@@ -321,9 +337,8 @@ class DownloadService {
       throw Exception('Video file for audio extraction not found.');
     }
 
-    final dir = await getTemporaryDirectory();
-    final baseName = inputVideoPath.split('/').last.replaceAll('.mp4', '');
-    final outputPath = '${dir.path}/$baseName.m4a';
+    final baseName = p.basenameWithoutExtension(inputVideoPath);
+    final outputPath = await _uniqueTempPath('$baseName.m4a');
 
     final totalDurationMs = await _getMediaDurationMillis(inputVideoPath);
 
@@ -333,7 +348,8 @@ class DownloadService {
 
     onProgress?.call(0.0);
 
-    final command = '-i "$inputVideoPath" -vn -c:a aac -b:a 192k "$outputPath"';
+    final command =
+        '-i "$inputVideoPath" -vn -c:a aac -b:a 192k "$outputPath"';
 
     final completer = Completer<String>();
 
@@ -369,10 +385,10 @@ class DownloadService {
             totalDurationMs != null &&
             totalDurationMs > 0) {
           final currentTimeMs = statistics.getTime().toInt();
-          double p = currentTimeMs / totalDurationMs;
-          if (p < 0.0) p = 0.0;
-          if (p > 0.99) p = 0.99;
-          onProgress(p);
+          double pVal = currentTimeMs / totalDurationMs;
+          if (pVal < 0.0) pVal = 0.0;
+          if (pVal > 0.99) pVal = 0.99;
+          onProgress(pVal);
         }
       },
     ).then((_) {}).catchError((e) {
@@ -408,7 +424,10 @@ class DownloadService {
 
       final Map<String, dynamic> fields = {
         'chat_id': chatId,
-        'video': await MultipartFile.fromFile(tempFilePath, filename: fileName),
+        'video': await MultipartFile.fromFile(
+          tempFilePath,
+          filename: fileName,
+        ),
         'supports_streaming': true,
       };
 
@@ -431,8 +450,7 @@ class DownloadService {
         },
       );
 
-      // IMPORTANT: Do NOT delete here so user can still save to gallery if they want.
-      // Deletion will be controlled by higher-level flow if needed.
+      // Do not delete here; higher-level code may still need this file.
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
         if (kDebugMode) {
@@ -473,7 +491,10 @@ class DownloadService {
 
       final Map<String, dynamic> fields = {
         'chat_id': chatId,
-        'audio': await MultipartFile.fromFile(tempFilePath, filename: fileName),
+        'audio': await MultipartFile.fromFile(
+          tempFilePath,
+          filename: fileName,
+        ),
       };
 
       if (caption != null && caption.trim().isNotEmpty) {
@@ -495,7 +516,7 @@ class DownloadService {
         },
       );
 
-      // Same as video: do not delete here, so gallery can still use it.
+      // Same as video: do not delete here.
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
         if (kDebugMode) {
@@ -516,54 +537,103 @@ class DownloadService {
 
   // ----------------- Gallery -----------------
 
-  Future<String> saveToGallery(String tempFilePath) async {
-    final file = File(tempFilePath);
-    if (!await file.exists()) {
-      throw Exception('Temporary file not found for gallery save.');
-    }
+ Future<String> saveToGallery(String tempFilePath) async {
+  final file = File(tempFilePath);
+  if (!await file.exists()) {
+    throw Exception('Temporary file not found for gallery save.');
+  }
 
-    // Ask permission again here if needed
-    if (Platform.isAndroid || Platform.isIOS) {
-      if (Platform.isAndroid) {
-        final androidInfo = await DeviceInfoPlugin().androidInfo;
-        final sdkInt = androidInfo.version.sdkInt;
+  // Ask permission again here if needed
+  if (Platform.isAndroid || Platform.isIOS) {
+  if (Platform.isAndroid) {
+    final androidInfo = await DeviceInfoPlugin().androidInfo;
+    final sdkInt = androidInfo.version.sdkInt;
 
-        if (sdkInt >= 33) {
-          final statuses = await [
-            Permission.photos,
-            Permission.videos,
-          ].request();
-          final granted = statuses.values.every((status) => status.isGranted);
-          if (!granted) {
-            throw Exception('Gallery permission not granted.');
-          }
-        } else {
-          final status = await Permission.storage.request();
-          if (!status.isGranted) {
-            throw Exception('Storage permission not granted.');
-          }
-        }
-      } else if (Platform.isIOS) {
-        final status = await Permission.photosAddOnly.request();
-        if (!status.isGranted) {
-          throw Exception('Photos permission not granted.');
-        }
+    if (sdkInt >= 33) {
+      // Request granular media permissions
+      final statuses = await [
+        Permission.photos,
+        Permission.videos,
+        Permission.audio,
+      ].request();
+
+      // Check based on what we are actually saving
+      final fileName = tempFilePath.split('/').last.toLowerCase();
+      final isVideo = fileName.endsWith('.mp4') ||
+          fileName.endsWith('.mkv') ||
+          fileName.endsWith('.webm') ||
+          fileName.endsWith('.mov');
+      final isAudio = fileName.endsWith('.mp3') ||
+          fileName.endsWith('.m4a') ||
+          fileName.endsWith('.aac') ||
+          fileName.endsWith('.wav') ||
+          fileName.endsWith('.flac') ||
+          fileName.endsWith('.ogg');
+
+      bool granted = true;
+      if (isVideo) {
+        granted = statuses[Permission.videos]?.isGranted == true;
+      } else if (isAudio) {
+        granted = statuses[Permission.audio]?.isGranted == true;
+      } else {
+        // Fallback: accept either photos or videos
+        granted = (statuses[Permission.photos]?.isGranted == true) ||
+            (statuses[Permission.videos]?.isGranted == true);
+      }
+
+      if (!granted) {
+        throw Exception('Gallery permission not granted.');
+      }
+    } else {
+      final status = await Permission.storage.request();
+      if (!status.isGranted) {
+        throw Exception('Storage permission not granted.');
       }
     }
-
-    final fileName = tempFilePath.split('/').last;
-
-    final result = await SaverGallery.saveFile(
-      filePath: tempFilePath,
-      fileName: fileName,
-      androidRelativePath: "Movies/K Downloader",
-      skipIfExists: true,
-    );
-
-    if (result.isSuccess != true) {
-      throw Exception('Failed to save file to gallery.');
+  } else if (Platform.isIOS) {
+    final status = await Permission.photosAddOnly.request();
+    if (!status.isGranted) {
+      throw Exception('Photos permission not granted.');
     }
-
-    return tempFilePath;
   }
+}
+
+  final fileName = tempFilePath.split('/').last;
+  final ext = fileName.toLowerCase();
+
+  // Decide correct Android relative directory:
+  // - Videos -> Movies/K Downloader
+  // - Audio  -> Music/K Downloader
+  String androidRelativePath;
+  if (ext.endsWith('.mp4') ||
+      ext.endsWith('.mkv') ||
+      ext.endsWith('.webm') ||
+      ext.endsWith('.mov')) {
+    androidRelativePath = 'Movies/K Downloader';
+  } else if (ext.endsWith('.mp3') ||
+      ext.endsWith('.m4a') ||
+      ext.endsWith('.aac') ||
+      ext.endsWith('.wav') ||
+      ext.endsWith('.flac') ||
+      ext.endsWith('.ogg')) {
+    androidRelativePath = 'Music/K Downloader';
+  } else {
+   //Fallback
+    androidRelativePath = 'Movies/K Downloader';
+  }
+
+  final result = await SaverGallery.saveFile(
+    filePath: tempFilePath,
+    fileName: fileName,
+    androidRelativePath: androidRelativePath,
+    skipIfExists: true,
+  );
+
+  if (result.isSuccess != true) {
+    throw Exception('Failed to save file to gallery.');
+  }
+
+  return tempFilePath;
+}
+
 }

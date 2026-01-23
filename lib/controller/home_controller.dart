@@ -349,21 +349,15 @@ class HomeController {
 
       ref.read(downloadProgressProvider.notifier).state = 1.0;
 
-      // Store paths for later actions
+   // Store paths for later actions
       ref.read(lastVideoPathProvider.notifier).state = tempVideoPath;
       ref.read(lastAudioPathProvider.notifier).state = tempAudioPath;
 
-      // Audio-only: send straight to Telegram, no dialog.
-      if (mode == DownloadMode.audio) {
-        ref.read(loadingProvider.notifier).state = false;
-        ref.read(postDownloadReadyProvider.notifier).state = false;
-        await handleSaveToTelegram();
-      } else {
-        // Show post-download dialog for video / both
-        ref.read(postDownloadReadyProvider.notifier).state = true;
-        ref.read(messageProvider.notifier).state =
-            "Download completed. Choose what to do next.".tr();
-      }
+      // Always show post-download dialog (video, audio, or both)
+      ref.read(loadingProvider.notifier).state = false;
+      ref.read(postDownloadReadyProvider.notifier).state = true;
+      ref.read(messageProvider.notifier).state =
+          "Download completed".tr();
 
       try {
         final linkTypeValue = getLinkType(url);

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:dio/dio.dart';
 import 'package:ffmpeg_kit_flutter_new_https/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https/ffprobe_kit.dart';
@@ -8,7 +7,11 @@ import 'package:ffmpeg_kit_flutter_new_https/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new_https/statistics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:device_info_plus/device_info_plus.dart';
+// import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:saver_gallery/saver_gallery.dart';
 import 'package:video_downloader/secrets.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
@@ -470,8 +473,7 @@ class DownloadService {
 
       final Map<String, dynamic> fields = {
         'chat_id': chatId,
-        'audio':
-            await MultipartFile.fromFile(tempFilePath, filename: fileName),
+        'audio': await MultipartFile.fromFile(tempFilePath, filename: fileName),
       };
 
       if (caption != null && caption.trim().isNotEmpty) {
@@ -514,14 +516,57 @@ class DownloadService {
 
   // ----------------- Gallery -----------------
 
-  Future<String> saveToGallery(String tempFilePath) async {
-    final file = File(tempFilePath);
-    if (!await file.exists()) {
-      throw Exception('Temporary file not found for gallery save.');
-    }
-
-    // For now, just return the same path (stub).
-    // Integrate real gallery plugin here if needed.
-    return tempFilePath;
+ Future<String> saveToGallery(String tempFilePath) async {
+  final file = File(tempFilePath);
+  if (!await file.exists()) {
+    throw Exception('Temporary file not found for gallery save.');
   }
+
+  // Ask permission again here if needed
+  if (Platform.isAndroid || Platform.isIOS) {
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      final sdkInt = androidInfo.version.sdkInt;
+
+      if (sdkInt >= 33) {
+        final statuses = await [
+          Permission.photos,
+          Permission.videos,
+        ].request();
+        final granted =
+            statuses.values.every((status) => status.isGranted);
+        if (!granted) {
+          throw Exception('Gallery permission not granted.');
+        }
+      } else {
+        final status = await Permission.storage.request();
+        if (!status.isGranted) {
+          throw Exception('Storage permission not granted.');
+        }
+      }
+    } else if (Platform.isIOS) {
+      final status = await Permission.photosAddOnly.request();
+      if (!status.isGranted) {
+        throw Exception('Photos permission not granted.');
+      }
+    }
+  }
+
+  final fileName = tempFilePath.split('/').last;
+
+  final result = await SaverGallery.saveFile(
+    filePath: tempFilePath,
+    fileName: fileName,
+    androidRelativePath: "Videos/K Downloader",
+    skipIfExists: true,
+  );
+
+  if (result.isSuccess != true) {
+    throw Exception('Failed to save file to gallery.');
+  }
+
+  return tempFilePath;
+}
+
+
 }

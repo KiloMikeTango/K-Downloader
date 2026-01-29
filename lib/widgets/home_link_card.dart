@@ -39,7 +39,7 @@ class HomeLinkCard extends ConsumerWidget {
     return TextStyle(fontSize: size * scale, fontWeight: weight, color: color);
   }
 
-  // --- Widget: Thumbnail Preview ---
+  // --- Widget: Thumbnail Preview (FIXED) ---
   Widget _buildThumbnailPreview(BuildContext context, WidgetRef ref) {
     final thumbnailUrl = ref.watch(thumbnailUrlProvider);
     final caption = ref.watch(videoCaptionProvider);
@@ -59,7 +59,7 @@ class HomeLinkCard extends ConsumerWidget {
       children: [
         SizedBox(height: _responsivePadding(context, 16.5)),
 
-        // Image Layer
+        // ✅ FIXED: thumbnailUrl.isNotEmpty
         if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
           Center(
             child: ConstrainedBox(
@@ -130,7 +130,7 @@ class HomeLinkCard extends ConsumerWidget {
     );
   }
 
-  // --- Widget: Mode Chip (Video/Audio) ---
+  // --- Widget: Mode Chip ---
   Widget _buildModeChip(
     BuildContext context, {
     required String label,
@@ -165,23 +165,19 @@ class HomeLinkCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Watch state from providers
     final isLoading = ref.watch(loadingProvider);
-    final message = ref.watch(messageProvider);
     final progress = ref.watch(downloadProgressProvider);
     final phase = ref.watch(transferPhaseProvider);
     final saveWithCaption = ref.watch(saveWithCaptionProvider);
     final mode = ref.watch(downloadModeProvider);
 
     final percent = (progress * 100).clamp(0, 100).toInt();
-
-    // ✅ FIXED: Show cancel during ALL active operations (download + upload)
     final isActiveOperation =
         phase == TransferPhase.downloading ||
         phase == TransferPhase.extracting ||
         phase == TransferPhase.uploading;
 
-    // Use switch expression for clean phase labels
+    // ✅ RESTORED: "Downloading: XX%" style
     final String phaseLabel = switch (phase) {
       TransferPhase.downloading => 'Downloading: $percent%',
       TransferPhase.extracting => 'Extracting audio...',
@@ -352,13 +348,9 @@ class HomeLinkCard extends ConsumerWidget {
           // 4. Preview Area
           _buildThumbnailPreview(context, ref),
 
-          // ✅ TIGHT SPACING: Dynamic spacing based on state
-          SizedBox(
-            height: _responsivePadding(context, isActiveOperation ? 12 : 15),
-          ),
-
-          // 5. Progress Bar (only when loading)
+          // 5. Progress Bar + "Downloading: XX%" STYLE
           if (isLoading) ...[
+            SizedBox(height: _responsivePadding(context, 12)),
             LinearProgressIndicator(
               color: kPrimaryColor,
               backgroundColor: Colors.white10,
@@ -369,9 +361,7 @@ class HomeLinkCard extends ConsumerWidget {
             Align(
               alignment: Alignment.center,
               child: Text(
-                phaseLabel.isNotEmpty
-                    ? phaseLabel
-                    : (progress > 0 ? '$percent%' : ''),
+                phaseLabel.isNotEmpty ? phaseLabel : '$percent%',
                 style: _responsiveTextStyle(
                   context,
                   size: 12,
@@ -381,27 +371,7 @@ class HomeLinkCard extends ConsumerWidget {
             ),
           ],
 
-          // 6. Status Message (always when present)
-          if (message.isNotEmpty) ...[
-            SizedBox(height: _responsivePadding(context, 8)),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: _responsiveTextStyle(
-                context,
-                size: 15.5,
-                weight: FontWeight.w500,
-                color: message.startsWith('Error') || message.contains('failed')
-                    ? Colors.red.shade300
-                    : message.startsWith('Telegram') ||
-                          message.contains('uccess')
-                    ? Colors.green.shade300
-                    : Colors.white,
-              ),
-            ),
-          ],
-
-          // 7. Cancel Button (ONLY during active operations: download + upload)
+          // 6. Cancel Button (ONLY during active operations)
           if (isActiveOperation) ...[
             SizedBox(height: _responsivePadding(context, 8)),
             SizedBox(

@@ -1,8 +1,6 @@
 import 'dart:ui';
-
 import 'package:video_downloader/providers/home_providers.dart';
-
-import '../widgets/post_download_dialog.dart';
+import 'package:video_downloader/widgets/post_download_options_dialog.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,8 +27,6 @@ class _HomePageState extends ConsumerState<HomePage>
   late final AnimationController _bgController;
   late final Animation<double> _bgAnimation;
   late final HomeController _controller;
-
-  bool _dialogShowing = false;
 
   @override
   void initState() {
@@ -70,27 +66,18 @@ class _HomePageState extends ConsumerState<HomePage>
     return scale;
   }
 
-  void _maybeShowPostDownloadDialog() {
-    final ready = ref.read(postDownloadReadyProvider);
-    final lastVideoPath = ref.read(lastVideoPathProvider);
-    final lastAudioPath = ref.read(lastAudioPathProvider);
+  void _showPostDownloadOptions() {
+    final videoPath = ref.read(lastVideoPathProvider);
+    if (videoPath == null) return;
 
-    if (!ready) return;
-    if (lastVideoPath == null && lastAudioPath == null) return;
-    if (_dialogShowing) return;
-
-    _dialogShowing = true;
-
-    showDialog<void>(
+    showDialog(
       context: context,
-      barrierDismissible: true,
-      builder: (context) => HomePostDownloadDialog(
+      builder: (context) => PostDownloadOptionsDialog(
         controller: _controller,
-        mediaScale: _mediaScale,
+        videoPath: videoPath,
+        ref: ref,
       ),
     ).whenComplete(() {
-      _dialogShowing = false;
-      // critical: prevent re-show on rebuild / language change
       ref.read(postDownloadReadyProvider.notifier).state = false;
     });
   }
@@ -98,7 +85,6 @@ class _HomePageState extends ConsumerState<HomePage>
   @override
   Widget build(BuildContext context) {
     final currentUrl = ref.watch(urlProvider);
-    final postReady = ref.watch(postDownloadReadyProvider);
 
     if (_urlController.text != currentUrl) {
       _urlController.text = currentUrl;
@@ -107,10 +93,9 @@ class _HomePageState extends ConsumerState<HomePage>
       );
     }
 
-    // Trigger dialog after build when ready
-    if (postReady) {
+    if (ref.watch(postDownloadReadyProvider)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _maybeShowPostDownloadDialog();
+        _showPostDownloadOptions();
       });
     }
 

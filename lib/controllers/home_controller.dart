@@ -104,101 +104,68 @@ class HomeController {
 
   // --- Main Actions: Download ---
 
-  Future<void> handleDownload() async {
-    final url = ref.read(urlProvider);
-    final linkType = MediaUtils.getLinkType(url);
+  // controllers/home_controller.dart - ADD THIS METHOD
+Future<void> handleDownload() async {
+  final url = ref.read(urlProvider);
+  final linkType = MediaUtils.getLinkType(url);
 
-    if (linkType == LinkType.invalid) {
-      ref.read(messageProvider.notifier).state = "msg_no_link".tr();
-      return;
-    }
-
-    _resetStateForDownload();
-
-    String? tempVideoPath;
-    String? tempAudioPath;
-
-    try {
-      final service = ref.read(downloadServiceProvider);
-      final mode = ref.read(downloadModeProvider);
-
-      // 1. Download Video Base
-      switch (linkType) {
-        case LinkType.youtube:
-          tempVideoPath = await service.downloadYoutubeMuxed(
-            MediaUtils.cleanYoutubeUrl(url),
-            onProgress: _updateProgress,
-          );
-
-          // Handle Audio Extraction for YouTube
-          if (mode == DownloadMode.audio || mode == DownloadMode.both) {
-            ref.read(transferPhaseProvider.notifier).state =
-                TransferPhase.extracting;
-            ref.read(messageProvider.notifier).state = "Extracting audio...";
-            ref.read(downloadProgressProvider.notifier).state = 0.0;
-
-            tempAudioPath = await service.extractMp3FromVideo(
-              tempVideoPath,
-              onProgress: _updateProgress,
-            );
-
-            // Cleanup if audio-only desired
-            if (mode == DownloadMode.audio && tempVideoPath != null) {
-              final file = File(tempVideoPath);
-              if (await file.exists()) await file.delete();
-              tempVideoPath = null;
-            }
-          }
-          break;
-
-        case LinkType.facebook:
-          tempVideoPath = await service.downloadFacebookVideo(
-            url,
-            onProgress: _updateProgress,
-          );
-          break;
-
-        case LinkType.tiktok:
-          tempVideoPath = await service.downloadTiktokVideo(
-            url,
-            onProgress: _updateProgress,
-          );
-          break;
-
-        default:
-          throw Exception("Unsupported link type");
-      }
-
-      if (tempVideoPath == null && tempAudioPath == null) {
-        throw Exception('No media downloaded.');
-      }
-
-      // 2. Success State
-      ref.read(downloadProgressProvider.notifier).state = 1.0;
-      ref.read(lastVideoPathProvider.notifier).state = tempVideoPath;
-      ref.read(lastAudioPathProvider.notifier).state = tempAudioPath;
-
-      ref.read(loadingProvider.notifier).state = false;
-      ref.read(postDownloadReadyProvider.notifier).state = true;
-      ref.read(transferPhaseProvider.notifier).state =
-          TransferPhase.downloading; // Keep visually active
-      ref.read(messageProvider.notifier).state = "Download completed".tr();
-
-      // 3. Analytics
-      try {
-        await ref.read(statsServiceProvider).incrementPlatform(linkType.name);
-      } catch (_) {}
-    } catch (e) {
-      await _handleError(e, tempVideoPath, tempAudioPath);
-    } finally {
-      // Stop loading spinner if we aren't waiting for anything else
-      if (ref.read(transferPhaseProvider) == TransferPhase.downloading) {
-        ref.read(loadingProvider.notifier).state = false;
-        ref.read(transferPhaseProvider.notifier).state = TransferPhase.idle;
-        ref.read(downloadProgressProvider.notifier).state = 0.0;
-      }
-    }
+  if (linkType == LinkType.invalid) {
+    ref.read(messageProvider.notifier).state = "msg_no_link".tr();
+    return;
   }
+
+  _resetStateForDownload();
+
+  String? tempVideoPath;
+  String? tempAudioPath;
+
+  try {
+    final service = ref.read(downloadServiceProvider);
+
+    //ALWAYS DOWNLOAD VIDEO FIRST (ignore mode for now)
+    switch (linkType) {
+      case LinkType.youtube:
+        tempVideoPath = await service.downloadYoutubeMuxed(
+          MediaUtils.cleanYoutubeUrl(url),
+          onProgress: _updateProgress,
+        );
+        break;
+      case LinkType.facebook:
+        tempVideoPath = await service.downloadFacebookVideo(url, onProgress: _updateProgress);
+        break;
+      case LinkType.tiktok:
+        tempVideoPath = await service.downloadTiktokVideo(url, onProgress: _updateProgress);
+        break;
+      default:
+        throw Exception("Unsupported link type");
+    }
+
+    if (tempVideoPath == null) {
+      throw Exception('Download failed');
+    }
+
+    //SUCCESS → Store path + Show OPTIONS dialog
+    ref.read(lastVideoPathProvider.notifier).state = tempVideoPath;
+    ref.read(loadingProvider.notifier).state = false;
+    ref.read(downloadProgressProvider.notifier).state = 1.0;
+    
+    // CRITICAL: Show dialog AFTER download (needs BuildContext)
+    if (ref.read(urlProvider) == url) { // Ensure URL didn't change
+      _showPostDownloadDialog();
+    }
+
+  } catch (e) {
+    await _handleError(e, tempVideoPath, tempAudioPath);
+  }
+}
+
+//Show options dialog AFTER download
+void _showPostDownloadDialog() {
+  // Using GlobalKey or Navigator.of(context) - needs BuildContext
+  // For now, set flag for HomePage to detect
+  ref.read(postDownloadReadyProvider.notifier).state = true;
+}
+
 
   // --- Main Actions: Save to Telegram ---
 

@@ -6,6 +6,7 @@ import 'package:video_downloader/controllers/home_controller.dart';
 import 'package:video_downloader/models/enums.dart';
 import 'package:video_downloader/providers/home_providers.dart';
 import 'package:video_downloader/utils/media_utils.dart';
+import 'package:video_downloader/widgets/post_download_options_dialog.dart';
 
 class HomeActionButton extends ConsumerWidget {
   final HomeController controller;
@@ -22,12 +23,10 @@ class HomeActionButton extends ConsumerWidget {
     final isLoading = ref.watch(loadingProvider);
     final scale = mediaScale(context);
 
-    // ✅ NEW: Only enable when URL is valid (non-empty + supported platform)
+    // Check if URL is valid before enabling button
     final url = ref.watch(urlProvider);
     final linkType = MediaUtils.getLinkType(url);
     final hasValidUrl = url.trim().isNotEmpty && linkType != LinkType.invalid;
-    
-    // Button is disabled if loading OR no valid URL
     final isDisabled = isLoading || !hasValidUrl;
 
     return SizedBox(
@@ -63,15 +62,17 @@ class HomeActionButton extends ConsumerWidget {
                         Icon(
                           Icons.download,
                           size: 22 * scale,
-                          color: Colors.white.withOpacity(isDisabled ? 0.5 : 1.0),
+                          color: Colors.white.withOpacity(
+                            isDisabled ? 0.5 : 1.0,
+                          ),
                         ),
                         SizedBox(width: 5 * scale),
                         Text(
-                          isLoading 
-                            ? 'Processing...' 
-                            : (hasValidUrl ? "btn_download".tr() : "Enter URL"),
+                          isLoading ? 'Processing...' : "btn_download".tr(),
                           style: TextStyle(
-                            color: Colors.white.withOpacity(isDisabled ? 0.5 : 1.0),
+                            color: Colors.white.withOpacity(
+                              isDisabled ? 0.5 : 1.0,
+                            ),
                             fontWeight: FontWeight.bold,
                             fontSize: 14 * scale,
                           ),

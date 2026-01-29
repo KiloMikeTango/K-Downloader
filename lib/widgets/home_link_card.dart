@@ -9,6 +9,7 @@ import 'package:video_downloader/providers/home_providers.dart';
 import 'package:video_downloader/utils/media_utils.dart';
 import 'package:video_downloader/widgets/glass_container.dart';
 
+// widgets/home_link_card.dart - SIMPLE CONSTRUCTOR
 class HomeLinkCard extends ConsumerWidget {
   final HomeController controller;
   final TextEditingController urlController;
@@ -22,6 +23,7 @@ class HomeLinkCard extends ConsumerWidget {
     required this.captionController,
     required this.mediaScale,
   });
+
 
   // --- Helper: Responsive Scaling ---
   double _responsivePadding(BuildContext context, double base) {
@@ -39,7 +41,7 @@ class HomeLinkCard extends ConsumerWidget {
     return TextStyle(fontSize: size * scale, fontWeight: weight, color: color);
   }
 
-  // --- Widget: Thumbnail Preview (FIXED) ---
+  // --- Widget: Thumbnail Preview ---
   Widget _buildThumbnailPreview(BuildContext context, WidgetRef ref) {
     final thumbnailUrl = ref.watch(thumbnailUrlProvider);
     final caption = ref.watch(videoCaptionProvider);
@@ -58,8 +60,6 @@ class HomeLinkCard extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(height: _responsivePadding(context, 16.5)),
-
-        // ✅ FIXED: thumbnailUrl.isNotEmpty
         if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
           Center(
             child: ConstrainedBox(
@@ -110,8 +110,6 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ),
           ),
-
-        // Caption Layer
         if (caption != null && caption.isNotEmpty) ...[
           SizedBox(height: _responsivePadding(context, 10)),
           Text(
@@ -130,54 +128,19 @@ class HomeLinkCard extends ConsumerWidget {
     );
   }
 
-  // --- Widget: Mode Chip ---
-  Widget _buildModeChip(
-    BuildContext context, {
-    required String label,
-    required bool selected,
-    required double scale,
-  }) {
-    return Container(
-      padding: EdgeInsets.symmetric(vertical: _responsivePadding(context, 7)),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(999 * scale),
-        color: selected
-            ? kPrimaryColor.withOpacity(0.22)
-            : Colors.white.withOpacity(0.05),
-        border: Border.all(
-          color: selected ? kPrimaryColor : Colors.white.withOpacity(0.25),
-          width: 1.0,
-        ),
-      ),
-      child: Center(
-        child: Text(
-          label,
-          style: _responsiveTextStyle(
-            context,
-            size: 13,
-            weight: FontWeight.w600,
-            color: Colors.white.withOpacity(selected ? 0.98 : 0.8),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isLoading = ref.watch(loadingProvider);
     final progress = ref.watch(downloadProgressProvider);
     final phase = ref.watch(transferPhaseProvider);
     final saveWithCaption = ref.watch(saveWithCaptionProvider);
-    final mode = ref.watch(downloadModeProvider);
 
     final percent = (progress * 100).clamp(0, 100).toInt();
-    final isActiveOperation =
-        phase == TransferPhase.downloading ||
-        phase == TransferPhase.extracting ||
+    final isActiveOperation = 
+        phase == TransferPhase.downloading || 
+        phase == TransferPhase.extracting || 
         phase == TransferPhase.uploading;
 
-    // ✅ RESTORED: "Downloading: XX%" style
     final String phaseLabel = switch (phase) {
       TransferPhase.downloading => 'Downloading: $percent%',
       TransferPhase.extracting => 'Extracting audio...',
@@ -186,9 +149,6 @@ class HomeLinkCard extends ConsumerWidget {
     };
 
     final scale = mediaScale(context);
-    final isVideo = mode == DownloadMode.video;
-    final isAudio = mode == DownloadMode.audio;
-    final isBoth = mode == DownloadMode.both;
 
     return GlassContainer(
       blur: 18,
@@ -241,83 +201,20 @@ class HomeLinkCard extends ConsumerWidget {
             ),
             onChanged: (value) {
               final cleaned = MediaUtils.cleanYoutubeUrl(value);
-
               if (cleaned != value) {
                 urlController.value = TextEditingValue(
                   text: cleaned,
                   selection: TextSelection.collapsed(offset: cleaned.length),
                 );
               }
-
               ref.read(urlProvider.notifier).state = cleaned;
               controller.updateThumbnailForUrl(cleaned);
             },
           ),
-
-          SizedBox(height: _responsivePadding(context, 8)),
-
-          // 2. Download Mode Selection
-          Text(
-            "Download as",
-            style: _responsiveTextStyle(
-              context,
-              size: 12,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-          SizedBox(height: 6 * scale),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: isLoading
-                      ? null
-                      : () => ref.read(downloadModeProvider.notifier).state =
-                            DownloadMode.video,
-                  child: _buildModeChip(
-                    context,
-                    label: "Video",
-                    selected: isVideo,
-                    scale: scale,
-                  ),
-                ),
-              ),
-              SizedBox(width: 6 * scale),
-              Expanded(
-                child: GestureDetector(
-                  onTap: isLoading
-                      ? null
-                      : () => ref.read(downloadModeProvider.notifier).state =
-                            DownloadMode.audio,
-                  child: _buildModeChip(
-                    context,
-                    label: "Audio",
-                    selected: isAudio,
-                    scale: scale,
-                  ),
-                ),
-              ),
-              SizedBox(width: 6 * scale),
-              Expanded(
-                child: GestureDetector(
-                  onTap: isLoading
-                      ? null
-                      : () => ref.read(downloadModeProvider.notifier).state =
-                            DownloadMode.both,
-                  child: _buildModeChip(
-                    context,
-                    label: "Both",
-                    selected: isBoth,
-                    scale: scale,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          SizedBox(height: _responsivePadding(context, 8)),
-
-          // 3. Save with Caption Checkbox
+          
+          SizedBox(height: _responsivePadding(context, 16)),
+          
+          // 2. Save with Caption Checkbox (KEEP - used in dialog)
           Row(
             children: [
               Checkbox(
@@ -344,11 +241,11 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ],
           ),
-
-          // 4. Preview Area
+          
+          // 3. Preview Area
           _buildThumbnailPreview(context, ref),
-
-          // 5. Progress Bar + "Downloading: XX%" STYLE
+          
+          // 4. Progress
           if (isLoading) ...[
             SizedBox(height: _responsivePadding(context, 12)),
             LinearProgressIndicator(
@@ -370,8 +267,8 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ),
           ],
-
-          // 6. Cancel Button (ONLY during active operations)
+          
+          // 5. Cancel Button
           if (isActiveOperation) ...[
             SizedBox(height: _responsivePadding(context, 8)),
             SizedBox(

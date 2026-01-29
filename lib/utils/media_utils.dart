@@ -1,11 +1,8 @@
-// 3. UTILITIES (utils/media_utils.dart)
-
 import 'package:http/http.dart' as http;
 import 'package:video_downloader/models/enums.dart';
 import 'package:video_downloader/secrets.dart';
 
 class MediaUtils {
-  
   static LinkType getLinkType(String url) {
     if (url.contains('youtu.be') || url.contains('youtube.com')) return LinkType.youtube;
     if (url.contains('facebook.com') || url.contains('fb.watch')) return LinkType.facebook;
@@ -22,11 +19,9 @@ class MediaUtils {
   static String? extractYoutubeId(String url) {
     try {
       final uri = Uri.parse(url);
-      // Handle youtu.be/ID
       if (uri.host.contains('youtu.be') && uri.pathSegments.isNotEmpty) {
         return uri.pathSegments.first;
       }
-      // Handle youtube.com
       if (uri.host.contains('youtube.com')) {
         if (uri.queryParameters.containsKey('v')) {
           return uri.queryParameters['v'];
@@ -50,7 +45,6 @@ class MediaUtils {
     try {
       final resolvedUrl = await _resolveRedirects(url);
       final encoded = Uri.encodeComponent(resolvedUrl);
-      // Assuming 'tiktokEncoded' is a global constant available in your project
       final oembedUrl = "$tiktokEncoded$encoded"; 
 
       final res = await http.get(Uri.parse(oembedUrl));
@@ -71,6 +65,14 @@ class MediaUtils {
     }
   }
 
+  // ✅ NEW: Platform name for dialog
+  static String getPlatformName(String url) {
+    if (url.contains('youtu.be') || url.contains('youtube.com')) return 'YouTube';
+    if (url.contains('facebook.com') || url.contains('fb.watch')) return 'Facebook';
+    if (url.contains('tiktok.com') || url.contains('vt.tiktok.com')) return 'TikTok';
+    return 'Video';
+  }
+
   static Future<String> _resolveRedirects(String url) async {
     final client = http.Client();
     try {
@@ -88,7 +90,6 @@ class MediaUtils {
   }
 
   static String cleanCaption(String text) {
-    // Remove hashtags and extra whitespace
     final withoutTags = text.replaceAll(RegExp(r'#\S+'), '');
     return withoutTags.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
@@ -96,13 +97,11 @@ class MediaUtils {
   static String? generateCaption(String? userCaption, String? filePath, bool saveWithCaption) {
     if (!saveWithCaption) return null;
 
-    // 1. Try user caption
     if (userCaption != null && userCaption.trim().isNotEmpty) {
       final cleaned = cleanCaption(userCaption);
       if (cleaned.isNotEmpty) return cleaned;
     }
 
-    // 2. Fallback to filename
     if (filePath != null) {
       final name = filePath.split('/').last;
       final base = name.replaceAll(RegExp(r'\.(mp4|m4a|mp3)$'), '');

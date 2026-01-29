@@ -174,85 +174,83 @@ class HomeController {
 
   // --- Main Actions: Save to Telegram ---
 
-  Future<void> handleSaveToTelegram() async {
-    final token = ref.read(tokenProvider);
-    final chatId = ref.read(chatIdProvider);
-    final mode = ref.read(downloadModeProvider);
-    final videoPath = ref.read(lastVideoPathProvider);
-    final audioPath = ref.read(lastAudioPathProvider);
+ Future<void> handleSaveToTelegram() async {
+  final token = ref.read(tokenProvider);
+  final chatId = ref.read(chatIdProvider);
+  final mode = ref.read(downloadModeProvider);
+  final videoPath = ref.read(lastVideoPathProvider);
+  final audioPath = ref.read(lastAudioPathProvider);
 
-    if (token.isEmpty || chatId.isEmpty) {
-      ref.read(messageProvider.notifier).state = "Configure bot first";
-      return;
-    }
-
-    ref.read(transferPhaseProvider.notifier).state = TransferPhase.uploading;
-    ref.read(downloadProgressProvider.notifier).state = 0.0;
-
-    final service = ref.read(downloadServiceProvider);
-
-    try {
-      final caption = MediaUtils.generateCaption(
-        ref.read(videoCaptionProvider),
-        videoPath ?? audioPath ?? '',
-        ref.read(saveWithCaptionProvider),
-      );
-
-      switch (mode) {
-        case DownloadMode.video:
-          if (videoPath != null) {
-            await service.saveToBot(
-              videoPath,
-              token,
-              chatId,
-              _updateProgress,
-              caption: caption,
-            );
-          }
-          break;
-
-        case DownloadMode.audio:
-          if (audioPath != null) {
-            await service.saveAudioToBot(
-              audioPath,
-              token,
-              chatId,
-              _updateProgress,
-              caption: caption,
-            );
-          }
-          break;
-
-        case DownloadMode.both:
-          if (videoPath != null) {
-            await service.saveToBot(
-              videoPath,
-              token,
-              chatId,
-              _updateProgress,
-              caption: caption,
-            );
-          }
-          if (audioPath != null) {
-            await service.saveAudioToBot(
-              audioPath,
-              token,
-              chatId,
-              _updateProgress,
-              caption: caption,
-            );
-          }
-          break;
-      }
-
-      ref.read(messageProvider.notifier).state = "Sent to Telegram!";
-    } catch (e) {
-      ref.read(messageProvider.notifier).state = "Telegram error: $e";
-    } finally {
-      ref.read(transferPhaseProvider.notifier).state = TransferPhase.idle;
-      ref.read(downloadProgressProvider.notifier).state = 0.0;
-    }
+  if (token.isEmpty || chatId.isEmpty) {
+    ref.read(messageProvider.notifier).state = "Configure bot first";
+    return;
   }
+
+  ref.read(transferPhaseProvider.notifier).state = TransferPhase.uploading;
+  ref.read(downloadProgressProvider.notifier).state = 0.0;
+
+  final service = ref.read(downloadServiceProvider);
+
+  try {
+    final caption = MediaUtils.generateCaption(
+      ref.read(videoCaptionProvider),
+      videoPath ?? audioPath ?? '',
+      ref.read(saveWithCaptionProvider),
+    );
+
+    switch (mode) {
+      case DownloadMode.video:
+        if (videoPath != null) {
+          await service.saveToBot(
+            videoPath,
+            token,
+            chatId,
+            _updateProgress,
+            caption: caption,
+          );
+        }
+        break;
+
+      case DownloadMode.audio:
+        if (audioPath != null) {
+          await service.saveAudioToBot(
+            audioPath,
+            token,
+            chatId,
+            _updateProgress,
+            caption: caption,
+          );
+        }
+        break;
+
+      case DownloadMode.both:
+        if (videoPath != null) {
+          await service.saveToBot(
+            videoPath,
+            token,
+            chatId,
+            _updateProgress,
+            caption: caption,
+          );
+        }
+        if (audioPath != null) {
+          await service.saveAudioToBot(
+            audioPath,
+            token,
+            chatId,
+            _updateProgress,
+            caption: caption,
+          );
+        }
+        break;
+    }
+
+    ref.read(messageProvider.notifier).state = "Sent to Telegram!";
+  } catch (e) {
+    ref.read(messageProvider.notifier).state = "Telegram error: $e";
+  }
+}
+
 
   // --- Main Actions: Save to Gallery ---
 

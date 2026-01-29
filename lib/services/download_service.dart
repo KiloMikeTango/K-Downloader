@@ -512,7 +512,7 @@ class DownloadService {
     final fileName = p.basename(tempFilePath);
     final ext = p.extension(tempFilePath).toLowerCase();
 
-    // Determine correct folder
+    //correct folder
     String androidRelativePath;
     if (['.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg'].contains(ext)) {
       androidRelativePath = 'Music/K Downloader';
@@ -524,7 +524,7 @@ class DownloadService {
       filePath: tempFilePath,
       fileName: fileName,
       androidRelativePath: androidRelativePath,
-      skipIfExists: false, // Set false to overwrite or create copy
+      skipIfExists: false,
     );
 
     if (result.isSuccess) {

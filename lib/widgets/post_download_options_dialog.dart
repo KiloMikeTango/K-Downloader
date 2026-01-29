@@ -17,17 +17,18 @@ class PostDownloadOptionsDialog extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<PostDownloadOptionsDialog> createState() => _PostDownloadOptionsDialogState();
+  ConsumerState<PostDownloadOptionsDialog> createState() =>
+      _PostDownloadOptionsDialogState();
 }
 
-class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsDialog> {
+class _PostDownloadOptionsDialogState
+    extends ConsumerState<PostDownloadOptionsDialog> {
   DownloadMode selectedMode = DownloadMode.video;
   bool isTelegramDestination = true;
   bool useCaption = false;
   bool _isProcessing = false;
   int _saveCount = 0;
 
-  final Color glassBase = Colors.blue.withOpacity(0.1);
   final Color glassBorder = Colors.white.withOpacity(0.2);
   final Color accentBlue = const Color(0xFF42A5F5);
 
@@ -93,11 +94,12 @@ class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsD
         Container(
           height: isCompact ? 120 : 160,
           width: double.infinity,
-          decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05)),
+          decoration: const BoxDecoration(color: Color(0x0A1E3A)),
           child: Image.file(
             File(widget.videoPath),
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Icon(Icons.movie, size: 40, color: glassBorder),
+            errorBuilder: (_, __, ___) =>
+                Icon(Icons.movie, size: 40, color: glassBorder),
           ),
         ),
         Container(
@@ -157,12 +159,12 @@ class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsD
           const SizedBox(height: 10),
           _buildDestinationToggle(),
           const SizedBox(height: 20),
-          
+
           _label(isTelegramDestination ? 'Selection Mode' : 'Gallery Format'),
           const SizedBox(height: 10),
           _buildFormatGrid(isCompact),
           const SizedBox(height: 20),
-          
+
           _label('Caption'),
           const SizedBox(height: 10),
           GestureDetector(
@@ -178,15 +180,20 @@ class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsD
               child: Row(
                 children: [
                   Icon(
-                    useCaption ? Icons.check_box : Icons.check_box_outline_blank,
+                    useCaption
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
                     color: accentBlue,
                     size: 20,
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
-                      'Include caption with media',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                      'Save with caption',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],
@@ -236,7 +243,9 @@ class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsD
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected ? accentBlue.withOpacity(0.2) : Colors.transparent,
+            color: isSelected
+                ? accentBlue.withOpacity(0.2)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -278,7 +287,9 @@ class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsD
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: isSelected ? accentBlue.withOpacity(0.3) : Colors.white.withOpacity(0.05),
+              color: isSelected
+                  ? accentBlue.withOpacity(0.3)
+                  : Colors.white.withOpacity(0.05),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: isSelected ? accentBlue : glassBorder),
             ),
@@ -367,14 +378,19 @@ class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsD
                   ? SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Icon(Icons.save, size: 18),
               label: Text(_isProcessing ? 'Saving...' : 'Save'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: accentBlue,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
             ),
@@ -415,7 +431,8 @@ class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsD
           break;
 
         case DownloadMode.audio:
-          ref.read(transferPhaseProvider.notifier).state = TransferPhase.extracting;
+          ref.read(transferPhaseProvider.notifier).state =
+              TransferPhase.extracting;
           final service = ref.read(downloadServiceProvider);
           final audioPath = await service.extractMp3FromVideo(widget.videoPath);
           if (audioPath != null) {
@@ -427,7 +444,8 @@ class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsD
 
         case DownloadMode.both:
           ref.read(lastVideoPathProvider.notifier).state = widget.videoPath;
-          ref.read(transferPhaseProvider.notifier).state = TransferPhase.extracting;
+          ref.read(transferPhaseProvider.notifier).state =
+              TransferPhase.extracting;
           final service = ref.read(downloadServiceProvider);
           final audioPath = await service.extractMp3FromVideo(widget.videoPath);
           if (audioPath != null) {
@@ -451,7 +469,9 @@ class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsD
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Saved to ${isTelegramDestination ? "Telegram" : "Gallery"} ✓'),
+            content: Text(
+              'Saved to ${isTelegramDestination ? "Telegram" : "Gallery"} ✓',
+            ),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 1),
           ),
@@ -459,12 +479,11 @@ class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsD
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _isProcessing = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
     }
   }
 }

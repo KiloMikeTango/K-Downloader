@@ -58,7 +58,7 @@ class HomeLinkCard extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(height: _responsivePadding(context, 16.5)),
-        
+
         // Image Layer
         if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
           Center(
@@ -110,7 +110,7 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ),
           ),
-          
+
         // Caption Layer
         if (caption != null && caption.isNotEmpty) ...[
           SizedBox(height: _responsivePadding(context, 10)),
@@ -175,8 +175,11 @@ class HomeLinkCard extends ConsumerWidget {
 
     final percent = (progress * 100).clamp(0, 100).toInt();
 
-    final isDownloading =
-        phase == TransferPhase.downloading || phase == TransferPhase.extracting;
+    // ✅ FIXED: Show cancel during ALL active operations (download + upload)
+    final isActiveOperation =
+        phase == TransferPhase.downloading ||
+        phase == TransferPhase.extracting ||
+        phase == TransferPhase.uploading;
 
     // Use switch expression for clean phase labels
     final String phaseLabel = switch (phase) {
@@ -241,27 +244,22 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ),
             onChanged: (value) {
-              // cleaned logic is now in MediaUtils
               final cleaned = MediaUtils.cleanYoutubeUrl(value);
-              
+
               if (cleaned != value) {
-                // Update controller but keep cursor at end or logic point
                 urlController.value = TextEditingValue(
                   text: cleaned,
                   selection: TextSelection.collapsed(offset: cleaned.length),
                 );
               }
-              
-              // Update state
+
               ref.read(urlProvider.notifier).state = cleaned;
-              
-              // Trigger thumbnail update in controller
               controller.updateThumbnailForUrl(cleaned);
             },
           ),
-          
+
           SizedBox(height: _responsivePadding(context, 8)),
-          
+
           // 2. Download Mode Selection
           Text(
             "Download as",
@@ -279,7 +277,7 @@ class HomeLinkCard extends ConsumerWidget {
                   onTap: isLoading
                       ? null
                       : () => ref.read(downloadModeProvider.notifier).state =
-                          DownloadMode.video,
+                            DownloadMode.video,
                   child: _buildModeChip(
                     context,
                     label: "Video",
@@ -294,7 +292,7 @@ class HomeLinkCard extends ConsumerWidget {
                   onTap: isLoading
                       ? null
                       : () => ref.read(downloadModeProvider.notifier).state =
-                          DownloadMode.audio,
+                            DownloadMode.audio,
                   child: _buildModeChip(
                     context,
                     label: "Audio",
@@ -309,7 +307,7 @@ class HomeLinkCard extends ConsumerWidget {
                   onTap: isLoading
                       ? null
                       : () => ref.read(downloadModeProvider.notifier).state =
-                          DownloadMode.both,
+                            DownloadMode.both,
                   child: _buildModeChip(
                     context,
                     label: "Both",
@@ -320,9 +318,9 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ],
           ),
-          
+
           SizedBox(height: _responsivePadding(context, 8)),
-          
+
           // 3. Save with Caption Checkbox
           Row(
             children: [
@@ -350,13 +348,16 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ],
           ),
-          
+
           // 4. Preview Area
           _buildThumbnailPreview(context, ref),
-          
-          SizedBox(height: _responsivePadding(context, 15)),
-          
-          // 5. Progress Bar
+
+          // ✅ TIGHT SPACING: Dynamic spacing based on state
+          SizedBox(
+            height: _responsivePadding(context, isActiveOperation ? 12 : 15),
+          ),
+
+          // 5. Progress Bar (only when loading)
           if (isLoading) ...[
             LinearProgressIndicator(
               color: kPrimaryColor,
@@ -364,7 +365,7 @@ class HomeLinkCard extends ConsumerWidget {
               value: progress > 0 ? progress : null,
               minHeight: 4,
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Align(
               alignment: Alignment.center,
               child: Text(
@@ -379,11 +380,10 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ),
           ],
-          
-          SizedBox(height: _responsivePadding(context, 5.5)),
-          
-          // 6. Status Message
-          if (message.isNotEmpty)
+
+          // 6. Status Message (always when present)
+          if (message.isNotEmpty) ...[
+            SizedBox(height: _responsivePadding(context, 8)),
             Text(
               message,
               textAlign: TextAlign.center,
@@ -393,19 +393,18 @@ class HomeLinkCard extends ConsumerWidget {
                 weight: FontWeight.w500,
                 color: message.startsWith('Error') || message.contains('failed')
                     ? Colors.red.shade300
-                    : message.startsWith('Telegram') || message.contains('uccess')
-                        ? Colors.green.shade300
-                        : Colors.white,
+                    : message.startsWith('Telegram') ||
+                          message.contains('uccess')
+                    ? Colors.green.shade300
+                    : Colors.white,
               ),
             ),
-            
-          const SizedBox(height: 12),
-          
-          // 7. Cancel Button (Only visible if needed, or disabled style)
-          AnimatedOpacity(
-            duration: const Duration(milliseconds: 300),
-            opacity: isDownloading ? 1.0 : 0.5,
-            child: SizedBox(
+          ],
+
+          // 7. Cancel Button (ONLY during active operations: download + upload)
+          if (isActiveOperation) ...[
+            SizedBox(height: _responsivePadding(context, 8)),
+            SizedBox(
               height: 32 * scale,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10 * scale),
@@ -418,14 +417,10 @@ class HomeLinkCard extends ConsumerWidget {
                         color: Colors.white.withOpacity(0.28),
                         width: 1.0,
                       ),
-                      color: Colors.white.withOpacity(
-                        isDownloading ? 0.12 : 0.04,
-                      ),
+                      color: Colors.white.withOpacity(0.12),
                     ),
                     child: TextButton.icon(
-                      onPressed: isDownloading
-                          ? controller.handleCancel
-                          : null,
+                      onPressed: controller.handleCancel,
                       style: TextButton.styleFrom(
                         foregroundColor: Colors.white,
                         padding: EdgeInsets.symmetric(horizontal: 12 * scale),
@@ -444,7 +439,7 @@ class HomeLinkCard extends ConsumerWidget {
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

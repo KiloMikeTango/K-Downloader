@@ -3,7 +3,9 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_downloader/controllers/home_controller.dart';
+import 'package:video_downloader/models/enums.dart';
 import 'package:video_downloader/providers/home_providers.dart';
+import 'package:video_downloader/utils/media_utils.dart';
 
 class HomeActionButton extends ConsumerWidget {
   final HomeController controller;
@@ -20,25 +22,34 @@ class HomeActionButton extends ConsumerWidget {
     final isLoading = ref.watch(loadingProvider);
     final scale = mediaScale(context);
 
+    // ✅ NEW: Only enable when URL is valid (non-empty + supported platform)
+    final url = ref.watch(urlProvider);
+    final linkType = MediaUtils.getLinkType(url);
+    final hasValidUrl = url.trim().isNotEmpty && linkType != LinkType.invalid;
+    
+    // Button is disabled if loading OR no valid URL
+    final isDisabled = isLoading || !hasValidUrl;
+
     return SizedBox(
       height: 50 * scale,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16 * scale),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16 * scale),
               border: Border.all(
-                color: Colors.white.withOpacity(0.28),
+                color: Colors.white.withOpacity(isDisabled ? 0.15 : 0.28),
                 width: 1.0,
               ),
-              color: Colors.white.withOpacity(isLoading ? 0.12 : 0.06),
+              color: Colors.white.withOpacity(isDisabled ? 0.12 : 0.06),
             ),
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: isLoading ? null : controller.handleDownload,
+                onTap: isDisabled ? null : () => controller.handleDownload(),
                 borderRadius: BorderRadius.circular(16 * scale),
                 child: Center(
                   child: Padding(
@@ -52,13 +63,15 @@ class HomeActionButton extends ConsumerWidget {
                         Icon(
                           Icons.download,
                           size: 22 * scale,
-                          color: Colors.white,
+                          color: Colors.white.withOpacity(isDisabled ? 0.5 : 1.0),
                         ),
                         SizedBox(width: 5 * scale),
                         Text(
-                          isLoading ? 'Processing...' : "btn_download".tr(),
+                          isLoading 
+                            ? 'Processing...' 
+                            : (hasValidUrl ? "btn_download".tr() : "Enter URL"),
                           style: TextStyle(
-                            color: Colors.white,
+                            color: Colors.white.withOpacity(isDisabled ? 0.5 : 1.0),
                             fontWeight: FontWeight.bold,
                             fontSize: 14 * scale,
                           ),

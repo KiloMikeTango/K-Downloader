@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:ffmpeg_kit_flutter_new_https/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https/ffprobe_kit.dart';
@@ -7,13 +8,12 @@ import 'package:ffmpeg_kit_flutter_new_https/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new_https/statistics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:saver_gallery/saver_gallery.dart';
-import 'package:video_downloader/secrets.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import 'package:video_downloader/secrets.dart'; 
 
 typedef DownloadProgressCallback = void Function(double progress);
 
@@ -24,11 +24,13 @@ class DownloadService {
   CancelToken? _currentDioCancelToken;
   bool _youtubeCancelRequested = false;
 
+  /// Resets cancel flags before starting a new operation
   void resetCancelFlags() {
     _youtubeCancelRequested = false;
     _currentDioCancelToken = null;
   }
 
+  /// Triggers cancellation for active downloads
   void cancelActiveOperation() {
     _currentDioCancelToken?.cancel('User cancelled');
     _youtubeCancelRequested = true;
@@ -36,23 +38,25 @@ class DownloadService {
 
   // ----------------- Helpers -----------------
 
-  String _cleanTitleForFilename(String title) {
+  /// Sanitize filename to remove illegal characters for file systems
+  String _sanitizeFilename(String title) {
+    // 1. Remove hashtags
     var text = title.replaceAll(RegExp(r'#\S+'), '');
+    // 2. Normalize whitespace
     text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    return text;
-  }
-
-  String _sanitizeTitle(String title) {
-    title = _cleanTitleForFilename(title);
+    
+    // 3. Remove illegal characters: < > : " / \ | ? * . (at end)
     final illegalCharsRegex = RegExp(r'[<>:"/\\|?*]|\.$');
-    String safeTitle = title.replaceAll(illegalCharsRegex, ' ');
-    safeTitle = safeTitle.replaceAll(RegExp(r'\s+'), ' ').trim();
+    String safeTitle = text.replaceAll(illegalCharsRegex, '');
+    
+    safeTitle = safeTitle.trim();
     if (safeTitle.isEmpty) {
-      return 'Video Download';
+      return 'Video_Download_${DateTime.now().millisecondsSinceEpoch}';
     }
     return safeTitle;
   }
 
+  /// Generates a unique path in the temporary directory
   Future<String> _uniqueTempPath(String fileName) async {
     final dir = await getTemporaryDirectory();
     final dirPath = dir.path;
@@ -71,6 +75,7 @@ class DownloadService {
     return p.join(dirPath, candidate);
   }
 
+  /// Generic HTTP file downloader
   Future<String> _httpDownloadToFile(
     String directUrl,
     String fileName, {
@@ -92,6 +97,11 @@ class DownloadService {
         options: Options(
           receiveTimeout: const Duration(minutes: 5),
           followRedirects: true,
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          },
         ),
         cancelToken: cancelToken,
         onReceiveProgress: (received, total) {
@@ -103,9 +113,6 @@ class DownloadService {
       );
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
-        if (kDebugMode) {
-          print('HTTP download cancelled: ${e.message}');
-        }
         throw Exception('CANCELLED');
       }
       rethrow;
@@ -122,7 +129,6 @@ class DownloadService {
   Future<Map<String, String>> _getFacebookDownloadUrl(String videoUrl) async {
     try {
       final url = Uri.parse(videoUrl);
-
       final response = await http.get(
         url,
         headers: {
@@ -153,7 +159,7 @@ class DownloadService {
 
       if (urlFound == null) {
         throw Exception(
-          'No video links (HD or SD) could be extracted from the page.',
+          'No video links (HD or SD) could be extracted from Facebook.',
         );
       }
 
@@ -162,17 +168,10 @@ class DownloadService {
         'title': 'Facebook_Video_${DateTime.now().millisecondsSinceEpoch}',
       };
     } on SocketException {
-      throw Exception(
-        'Failed to download Facebook video: Network Unreachable. '
-        'Check your Wi‑Fi/data connection and app permissions.',
-      );
+      throw Exception('Network unreachable. Check your internet connection.');
     } catch (e) {
-      if (kDebugMode) {
-        print('SCRAPING/UNKNOWN ERROR: $e');
-      }
-      throw Exception(
-        'Failed to download Facebook video: An error occurred during scraping.',
-      );
+      if (kDebugMode) print('FB Scrape Error: $e');
+      throw Exception('Failed to process Facebook link.');
     }
   }
 
@@ -182,9 +181,9 @@ class DownloadService {
   }) async {
     final linkData = await _getFacebookDownloadUrl(url);
     final directUrl = linkData['url']!;
-    final videoTitle = linkData['title']!;
-    final safeTitle = _sanitizeTitle(videoTitle);
+    final safeTitle = _sanitizeFilename(linkData['title']!);
     final fileName = '$safeTitle.mp4';
+    
     return _httpDownloadToFile(directUrl, fileName, onProgress: onProgress);
   }
 
@@ -192,7 +191,8 @@ class DownloadService {
 
   Future<Map<String, String>> _getTiktokDownloadUrl(String videoUrl) async {
     try {
-      final apiUrl = tiktokApi;
+      // Ensure tiktokApi is defined in secrets.dart
+      final apiUrl = tiktokApi; 
 
       final response = await _dio.get(
         apiUrl,
@@ -205,29 +205,17 @@ class DownloadService {
         final title = data?['title'] ?? 'Tiktok_Video';
 
         if (downloadUrl == null || downloadUrl.isEmpty) {
-          throw Exception(
-            'TikTok API returned media info but no download URL (play field).',
-          );
+          throw Exception('TikTok API returned no download URL.');
         }
 
-        if (kDebugMode) {
-          print('TikTok Download URL received.');
-        }
-        return {'url': downloadUrl as String, 'title': title as String};
+        return {'url': downloadUrl.toString(), 'title': title.toString()};
       }
-      throw Exception('TikTok API failed with status: ${response.statusCode}');
+      throw Exception('TikTok API error: ${response.statusCode}');
     } on DioException catch (e) {
-      final responseData = e.response?.data;
-      if (kDebugMode) {
-        print('TikTok API Error: $responseData');
-      }
-      throw Exception(
-        'Failed to fetch TikTok link: ${responseData?['msg'] ?? e.message}',
-      );
+      final msg = e.response?.data?['msg'] ?? e.message;
+      throw Exception('Failed to fetch TikTok link: $msg');
     } catch (e) {
-      throw Exception(
-        'An unknown error occurred while contacting TikTok API: $e',
-      );
+      throw Exception('Unknown TikTok error: $e');
     }
   }
 
@@ -237,9 +225,9 @@ class DownloadService {
   }) async {
     final linkData = await _getTiktokDownloadUrl(url);
     final directUrl = linkData['url']!;
-    final videoTitle = linkData['title']!;
-    final safeTitle = _sanitizeTitle(videoTitle);
+    final safeTitle = _sanitizeFilename(linkData['title']!);
     final fileName = '$safeTitle.mp4';
+    
     return _httpDownloadToFile(directUrl, fileName, onProgress: onProgress);
   }
 
@@ -251,36 +239,30 @@ class DownloadService {
   }) async {
     _youtubeCancelRequested = false;
 
-    final videoId = VideoId(url);
-    final video = await _yt.videos.get(videoId);
-    final manifest = await _yt.videos.streamsClient.getManifest(videoId);
-
-    final streamInfo = manifest.muxed.sortByVideoQuality().reversed.first;
-
-    final safeTitle = _sanitizeTitle(video.title);
-    final filePath = await _uniqueTempPath('$safeTitle.mp4');
-    final file = File(filePath);
-
-    if (kDebugMode) {
-      print('Downloading YouTube stream to temp path: $filePath');
-    }
-
-    final videoStream = _yt.videos.streamsClient.get(streamInfo);
-    final fileStream = file.openWrite();
-
-    final totalBytes = streamInfo.size.totalBytes;
-    int receivedBytes = 0;
-
     try {
+      final videoId = VideoId(url);
+      final video = await _yt.videos.get(videoId);
+      final manifest = await _yt.videos.streamsClient.getManifest(videoId);
+      
+      // Get best quality muxed (video + audio)
+      final streamInfo = manifest.muxed.sortByVideoQuality().reversed.first;
+
+      final safeTitle = _sanitizeFilename(video.title);
+      final filePath = await _uniqueTempPath('$safeTitle.mp4');
+      final file = File(filePath);
+
+      final videoStream = _yt.videos.streamsClient.get(streamInfo);
+      final fileStream = file.openWrite();
+
+      final totalBytes = streamInfo.size.totalBytes;
+      int receivedBytes = 0;
+
       await for (final data in videoStream) {
+        // Check manual cancel flag
         if (_youtubeCancelRequested) {
-          if (kDebugMode) {
-            print('YouTube download cancelled by user');
-          }
+          await fileStream.flush();
           await fileStream.close();
-          if (await file.exists()) {
-            await file.delete();
-          }
+          if (await file.exists()) await file.delete();
           throw Exception('CANCELLED');
         }
 
@@ -293,37 +275,34 @@ class DownloadService {
         }
       }
 
+      await fileStream.flush();
       await fileStream.close();
       onProgress?.call(1.0);
       return filePath;
+
     } catch (e) {
-      await fileStream.close();
-      if (await file.exists()) {
-        await file.delete();
-      }
+      // Cleanup is handled inside logic or by rethrowing
       rethrow;
     } finally {
       _youtubeCancelRequested = false;
     }
   }
 
-  // ----------------- FFmpeg (extract audio) -----------------
+  // ----------------- FFmpeg (Extract Audio) -----------------
 
   Future<int?> _getMediaDurationMillis(String inputPath) async {
     try {
       final session = await FFprobeKit.getMediaInformation(inputPath);
       final info = await session.getMediaInformation();
       final durationStr = info?.getDuration();
-      if (durationStr == null) {
-        return null;
-      }
+      if (durationStr == null) return null;
+      
       final seconds = double.tryParse(durationStr);
       if (seconds == null) return null;
+      
       return (seconds * 1000).round();
     } catch (e) {
-      if (kDebugMode) {
-        print('FFprobe duration error: $e');
-      }
+      if (kDebugMode) print('FFprobe error: $e');
       return null;
     }
   }
@@ -334,23 +313,17 @@ class DownloadService {
   }) async {
     final inputFile = File(inputVideoPath);
     if (!await inputFile.exists()) {
-      throw Exception('Video file for audio extraction not found.');
+      throw Exception('Video file not found for conversion.');
     }
 
     final baseName = p.basenameWithoutExtension(inputVideoPath);
     final outputPath = await _uniqueTempPath('$baseName.m4a');
-
     final totalDurationMs = await _getMediaDurationMillis(inputVideoPath);
-
-    if (kDebugMode) {
-      print('Starting audio extraction. Duration(ms) = $totalDurationMs');
-    }
 
     onProgress?.call(0.0);
 
-    final command =
-        '-i "$inputVideoPath" -vn -c:a aac -b:a 192k "$outputPath"';
-
+    // Command: Extract audio, no video, AAC codec
+    final command = '-i "$inputVideoPath" -vn -c:a aac -b:a 192k -y "$outputPath"';
     final completer = Completer<String>();
 
     FFmpegKit.executeAsync(
@@ -359,48 +332,45 @@ class DownloadService {
         final returnCode = await session.getReturnCode();
 
         if (ReturnCode.isSuccess(returnCode)) {
-          if (!await File(outputPath).exists()) {
-            completer.completeError(
-              Exception('Audio output file was not created.'),
-            );
-            return;
+          if (await File(outputPath).exists()) {
+            onProgress?.call(1.0);
+            completer.complete(outputPath);
+          } else {
+            completer.completeError(Exception('Output file not created.'));
           }
-          onProgress?.call(1.0);
-          completer.complete(outputPath);
         } else {
-          final logs = await session.getAllLogs();
-          final logText = logs.map((e) => e.getMessage()).join('\n');
-          completer.completeError(
-            Exception('Failed to extract audio. FFmpeg error: $logText'),
-          );
+          // Check if it was cancelled
+          if (ReturnCode.isCancel(returnCode)) {
+            completer.completeError(Exception('CANCELLED'));
+          } else {
+            final logs = await session.getAllLogs();
+            final msg = logs.map((e) => e.getMessage()).join('\n');
+            completer.completeError(Exception('FFmpeg failed: $msg'));
+          }
         }
       },
       (log) {
-        if (kDebugMode) {
-          // print(log.getMessage());
-        }
+        // Optional: Listen to logs
       },
       (Statistics statistics) {
-        if (onProgress != null &&
-            totalDurationMs != null &&
-            totalDurationMs > 0) {
-          final currentTimeMs = statistics.getTime().toInt();
-          double pVal = currentTimeMs / totalDurationMs;
-          if (pVal < 0.0) pVal = 0.0;
-          if (pVal > 0.99) pVal = 0.99;
-          onProgress(pVal);
+        if (onProgress != null && totalDurationMs != null && totalDurationMs > 0) {
+          final time = statistics.getTime();
+          if (time > 0) {
+            double pVal = time / totalDurationMs;
+            onProgress(pVal.clamp(0.0, 0.99));
+          }
         }
       },
-    ).then((_) {}).catchError((e) {
-      if (!completer.isCompleted) {
-        completer.completeError(e);
-      }
-    });
+    );
 
+    // Allow external cancellation of the FFmpeg session if needed
+    // Note: FFmpegKit.cancel() cancels all sessions. 
+    // If you need specific cancellation, store the sessionId.
+    
     return completer.future;
   }
 
-  // ----------------- Telegram: video/audio -----------------
+  // ----------------- Telegram Upload -----------------
 
   Future<void> saveToBot(
     String tempFilePath,
@@ -409,64 +379,14 @@ class DownloadService {
     DownloadProgressCallback? onProgress, {
     String? caption,
   }) async {
-    final file = File(tempFilePath);
-    final fileName = file.path.split('/').last;
-
-    if (!await file.exists()) {
-      throw Exception('Temporary video file was not found.');
-    }
-
-    final cancelToken = CancelToken();
-    _currentDioCancelToken = cancelToken;
-
-    try {
-      final apiUrl = 'https://api.telegram.org/bot$botToken/sendVideo';
-
-      final Map<String, dynamic> fields = {
-        'chat_id': chatId,
-        'video': await MultipartFile.fromFile(
-          tempFilePath,
-          filename: fileName,
-        ),
-        'supports_streaming': true,
-      };
-
-      if (caption != null && caption.trim().isNotEmpty) {
-        fields['caption'] = caption.trim();
-      }
-
-      final formData = FormData.fromMap(fields);
-
-      await _dio.post(
-        apiUrl,
-        data: formData,
-        options: Options(sendTimeout: const Duration(minutes: 5)),
-        cancelToken: cancelToken,
-        onSendProgress: (sent, total) {
-          if (onProgress != null && total > 0) {
-            final progress = sent / total;
-            onProgress(progress.clamp(0.0, 1.0));
-          }
-        },
-      );
-
-      // Do not delete here; higher-level code may still need this file.
-    } on DioException catch (e) {
-      if (CancelToken.isCancel(e)) {
-        if (kDebugMode) {
-          print('Telegram upload cancelled: ${e.message}');
-        }
-        throw Exception('CANCELLED');
-      }
-      throw Exception('Chat ID မှားနေပါသည်။');
-    } catch (e) {
-      if (kDebugMode) {
-        print('Telegram Upload Error: $e');
-      }
-      throw Exception('Chat ID မှားနေပါသည်။');
-    } finally {
-      _currentDioCancelToken = null;
-    }
+    await _uploadToTelegram(
+      tempFilePath,
+      botToken,
+      chatId,
+      'video',
+      onProgress,
+      caption: caption,
+    );
   }
 
   Future<void> saveAudioToBot(
@@ -476,26 +396,46 @@ class DownloadService {
     DownloadProgressCallback? onProgress, {
     String? caption,
   }) async {
-    final file = File(tempFilePath);
-    final fileName = file.path.split('/').last;
+    await _uploadToTelegram(
+      tempFilePath,
+      botToken,
+      chatId,
+      'audio',
+      onProgress,
+      caption: caption,
+    );
+  }
 
-    if (!await file.exists()) {
-      throw Exception('Temporary audio file was not found.');
-    }
+  Future<void> _uploadToTelegram(
+    String filePath,
+    String botToken,
+    String chatId,
+    String fileType, // 'video' or 'audio'
+    DownloadProgressCallback? onProgress, {
+    String? caption,
+  }) async {
+    final file = File(filePath);
+    if (!await file.exists()) throw Exception('$fileType file not found.');
+
+    final fileName = p.basename(filePath);
+    final endpoint = fileType == 'video' ? 'sendVideo' : 'sendAudio';
+    final apiUrl = 'https://api.telegram.org/bot$botToken/$endpoint';
 
     final cancelToken = CancelToken();
     _currentDioCancelToken = cancelToken;
 
     try {
-      final apiUrl = 'https://api.telegram.org/bot$botToken/sendAudio';
-
       final Map<String, dynamic> fields = {
         'chat_id': chatId,
-        'audio': await MultipartFile.fromFile(
-          tempFilePath,
+        fileType: await MultipartFile.fromFile(
+          filePath,
           filename: fileName,
         ),
       };
+
+      if (fileType == 'video') {
+        fields['supports_streaming'] = true;
+      }
 
       if (caption != null && caption.trim().isNotEmpty) {
         fields['caption'] = caption.trim();
@@ -506,30 +446,18 @@ class DownloadService {
       await _dio.post(
         apiUrl,
         data: formData,
-        options: Options(sendTimeout: const Duration(minutes: 5)),
+        options: Options(sendTimeout: const Duration(minutes: 10)),
         cancelToken: cancelToken,
         onSendProgress: (sent, total) {
           if (onProgress != null && total > 0) {
-            final progress = sent / total;
-            onProgress(progress.clamp(0.0, 1.0));
+            onProgress((sent / total).clamp(0.0, 1.0));
           }
         },
       );
-
-      // Same as video: do not delete here.
     } on DioException catch (e) {
-      if (CancelToken.isCancel(e)) {
-        if (kDebugMode) {
-          print('Telegram audio upload cancelled: ${e.message}');
-        }
-        throw Exception('CANCELLED');
-      }
-      throw Exception('Chat ID မှားနေပါသည်။');
-    } catch (e) {
-      if (kDebugMode) {
-        print('Telegram Audio Upload Error: $e');
-      }
-      throw Exception('Chat ID မှားနေပါသည်။');
+      if (CancelToken.isCancel(e)) throw Exception('CANCELLED');
+      // Standardize error message
+      throw Exception('Telegram Upload Failed: Invalid Chat ID or Network Error.');
     } finally {
       _currentDioCancelToken = null;
     }
@@ -537,103 +465,72 @@ class DownloadService {
 
   // ----------------- Gallery -----------------
 
- Future<String> saveToGallery(String tempFilePath) async {
-  final file = File(tempFilePath);
-  if (!await file.exists()) {
-    throw Exception('Temporary file not found for gallery save.');
-  }
+  Future<String> saveToGallery(String tempFilePath) async {
+    final file = File(tempFilePath);
+    if (!await file.exists()) {
+      throw Exception('File not found for gallery save.');
+    }
 
-  // Ask permission again here if needed
-  if (Platform.isAndroid || Platform.isIOS) {
-  if (Platform.isAndroid) {
-    final androidInfo = await DeviceInfoPlugin().androidInfo;
-    final sdkInt = androidInfo.version.sdkInt;
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      final sdkInt = androidInfo.version.sdkInt;
 
-    if (sdkInt >= 33) {
-      // Request granular media permissions
-      final statuses = await [
-        Permission.photos,
-        Permission.videos,
-        Permission.audio,
-      ].request();
+      if (sdkInt >= 33) {
+        // Android 13+ Granular Permissions
+        final fileName = p.basename(tempFilePath).toLowerCase();
+        final isVideo = fileName.endsWith('.mp4') || fileName.endsWith('.mkv');
+        final isAudio = fileName.endsWith('.mp3') || fileName.endsWith('.m4a');
 
-      // Check based on what we are actually saving
-      final fileName = tempFilePath.split('/').last.toLowerCase();
-      final isVideo = fileName.endsWith('.mp4') ||
-          fileName.endsWith('.mkv') ||
-          fileName.endsWith('.webm') ||
-          fileName.endsWith('.mov');
-      final isAudio = fileName.endsWith('.mp3') ||
-          fileName.endsWith('.m4a') ||
-          fileName.endsWith('.aac') ||
-          fileName.endsWith('.wav') ||
-          fileName.endsWith('.flac') ||
-          fileName.endsWith('.ogg');
+        Permission? requiredPerm;
+        if (isVideo) requiredPerm = Permission.videos;
+        else if (isAudio) requiredPerm = Permission.audio;
+        else requiredPerm = Permission.photos; // Fallback
 
-      bool granted = true;
-      if (isVideo) {
-        granted = statuses[Permission.videos]?.isGranted == true;
-      } else if (isAudio) {
-        granted = statuses[Permission.audio]?.isGranted == true;
+        final status = await requiredPerm.request();
+        if (!status.isGranted) {
+           // Fallback check: sometimes photos permission covers videos in some厂商 implementations
+           if (isVideo && await Permission.photos.request().isGranted) {
+             // allow
+           } else {
+             throw Exception('Permission denied. Please allow access in Settings.');
+           }
+        }
       } else {
-        // Fallback: accept either photos or videos
-        granted = (statuses[Permission.photos]?.isGranted == true) ||
-            (statuses[Permission.videos]?.isGranted == true);
+        // Android 12 and below
+        final status = await Permission.storage.request();
+        if (!status.isGranted) {
+          throw Exception('Storage permission denied.');
+        }
       }
-
-      if (!granted) {
-        throw Exception('Gallery permission not granted.');
-      }
-    } else {
-      final status = await Permission.storage.request();
+    } else if (Platform.isIOS) {
+      final status = await Permission.photosAddOnly.request();
       if (!status.isGranted) {
-        throw Exception('Storage permission not granted.');
+        throw Exception('Photos permission denied.');
       }
     }
-  } else if (Platform.isIOS) {
-    final status = await Permission.photosAddOnly.request();
-    if (!status.isGranted) {
-      throw Exception('Photos permission not granted.');
+
+    final fileName = p.basename(tempFilePath);
+    final ext = p.extension(tempFilePath).toLowerCase();
+
+    // Determine correct folder
+    String androidRelativePath;
+    if (['.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg'].contains(ext)) {
+      androidRelativePath = 'Music/K Downloader';
+    } else {
+      androidRelativePath = 'Movies/K Downloader';
+    }
+
+    final result = await SaverGallery.saveFile(
+      filePath: tempFilePath,
+      fileName: fileName,
+      androidRelativePath: androidRelativePath,
+      skipIfExists: false, // Set false to overwrite or create copy
+    );
+
+    if (result.isSuccess) {
+      return tempFilePath;
+    } else {
+      throw Exception('Failed to save to Gallery.');
     }
   }
-}
-
-  final fileName = tempFilePath.split('/').last;
-  final ext = fileName.toLowerCase();
-
-  // Decide correct Android relative directory:
-  // - Videos -> Movies/K Downloader
-  // - Audio  -> Music/K Downloader
-  String androidRelativePath;
-  if (ext.endsWith('.mp4') ||
-      ext.endsWith('.mkv') ||
-      ext.endsWith('.webm') ||
-      ext.endsWith('.mov')) {
-    androidRelativePath = 'Movies/K Downloader';
-  } else if (ext.endsWith('.mp3') ||
-      ext.endsWith('.m4a') ||
-      ext.endsWith('.aac') ||
-      ext.endsWith('.wav') ||
-      ext.endsWith('.flac') ||
-      ext.endsWith('.ogg')) {
-    androidRelativePath = 'Music/K Downloader';
-  } else {
-   //Fallback
-    androidRelativePath = 'Movies/K Downloader';
-  }
-
-  final result = await SaverGallery.saveFile(
-    filePath: tempFilePath,
-    fileName: fileName,
-    androidRelativePath: androidRelativePath,
-    skipIfExists: true,
-  );
-
-  if (result.isSuccess != true) {
-    throw Exception('Failed to save file to gallery.');
-  }
-
-  return tempFilePath;
-}
-
 }

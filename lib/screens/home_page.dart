@@ -75,7 +75,6 @@ class _HomePageState extends ConsumerState<HomePage>
       builder: (context) => PostDownloadOptionsDialog(
         controller: _controller,
         videoPath: videoPath,
-        ref: ref,
       ),
     ).whenComplete(() {
       ref.read(postDownloadReadyProvider.notifier).state = false;

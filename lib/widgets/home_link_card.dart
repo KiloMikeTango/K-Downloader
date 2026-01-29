@@ -24,7 +24,6 @@ class HomeLinkCard extends ConsumerWidget {
     required this.mediaScale,
   });
 
-
   // --- Helper: Responsive Scaling ---
   double _responsivePadding(BuildContext context, double base) {
     final scale = mediaScale(context);
@@ -136,9 +135,9 @@ class HomeLinkCard extends ConsumerWidget {
     final saveWithCaption = ref.watch(saveWithCaptionProvider);
 
     final percent = (progress * 100).clamp(0, 100).toInt();
-    final isActiveOperation = 
-        phase == TransferPhase.downloading || 
-        phase == TransferPhase.extracting || 
+    final isActiveOperation =
+        phase == TransferPhase.downloading ||
+        phase == TransferPhase.extracting ||
         phase == TransferPhase.uploading;
 
     final String phaseLabel = switch (phase) {
@@ -211,40 +210,12 @@ class HomeLinkCard extends ConsumerWidget {
               controller.updateThumbnailForUrl(cleaned);
             },
           ),
-          
-          SizedBox(height: _responsivePadding(context, 16)),
-          
-          // 2. Save with Caption Checkbox (KEEP - used in dialog)
-          Row(
-            children: [
-              Checkbox(
-                value: saveWithCaption,
-                onChanged: isLoading
-                    ? null
-                    : (value) {
-                        ref.read(saveWithCaptionProvider.notifier).state =
-                            value ?? true;
-                      },
-                activeColor: kPrimaryColor,
-                checkColor: Colors.white,
-                side: BorderSide(color: Colors.white.withOpacity(0.5)),
-              ),
-              Expanded(
-                child: Text(
-                  "label_save_with_caption".tr(),
-                  style: _responsiveTextStyle(
-                    context,
-                    size: 13.5,
-                    color: Colors.white.withOpacity(0.85),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          
+
+          // SizedBox(height: _responsivePadding(context, 16)),
+
           // 3. Preview Area
           _buildThumbnailPreview(context, ref),
-          
+
           // 4. Progress
           if (isLoading) ...[
             SizedBox(height: _responsivePadding(context, 12)),
@@ -267,7 +238,7 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ),
           ],
-          
+
           // 5. Cancel Button
           if (isActiveOperation) ...[
             SizedBox(height: _responsivePadding(context, 8)),

@@ -105,143 +105,149 @@ class HomeController {
   // --- Main Actions: Download ---
 
   // controllers/home_controller.dart - ADD THIS METHOD
-Future<void> handleDownload() async {
-  final url = ref.read(urlProvider);
-  final linkType = MediaUtils.getLinkType(url);
+  Future<void> handleDownload() async {
+    final url = ref.read(urlProvider);
+    final linkType = MediaUtils.getLinkType(url);
 
-  if (linkType == LinkType.invalid) {
-    ref.read(messageProvider.notifier).state = "msg_no_link".tr();
-    return;
+    if (linkType == LinkType.invalid) {
+      ref.read(messageProvider.notifier).state = "msg_no_link".tr();
+      return;
+    }
+
+    _resetStateForDownload();
+
+    String? tempVideoPath;
+    String? tempAudioPath;
+
+    try {
+      final service = ref.read(downloadServiceProvider);
+
+      //ALWAYS DOWNLOAD VIDEO FIRST (ignore mode for now)
+      switch (linkType) {
+        case LinkType.youtube:
+          tempVideoPath = await service.downloadYoutubeMuxed(
+            MediaUtils.cleanYoutubeUrl(url),
+            onProgress: _updateProgress,
+          );
+          break;
+        case LinkType.facebook:
+          tempVideoPath = await service.downloadFacebookVideo(
+            url,
+            onProgress: _updateProgress,
+          );
+          break;
+        case LinkType.tiktok:
+          tempVideoPath = await service.downloadTiktokVideo(
+            url,
+            onProgress: _updateProgress,
+          );
+          break;
+        default:
+          throw Exception("Unsupported link type");
+      }
+
+      if (tempVideoPath == null) {
+        throw Exception('Download failed');
+      }
+
+      //SUCCESS → Store path + Show OPTIONS dialog
+      ref.read(lastVideoPathProvider.notifier).state = tempVideoPath;
+      ref.read(loadingProvider.notifier).state = false;
+      ref.read(downloadProgressProvider.notifier).state = 1.0;
+
+      // CRITICAL: Show dialog AFTER download (needs BuildContext)
+      if (ref.read(urlProvider) == url) {
+        // Ensure URL didn't change
+        _showPostDownloadDialog();
+      }
+    } catch (e) {
+      await _handleError(e, tempVideoPath, tempAudioPath);
+    }
   }
 
-  _resetStateForDownload();
-
-  String? tempVideoPath;
-  String? tempAudioPath;
-
-  try {
-    final service = ref.read(downloadServiceProvider);
-
-    //ALWAYS DOWNLOAD VIDEO FIRST (ignore mode for now)
-    switch (linkType) {
-      case LinkType.youtube:
-        tempVideoPath = await service.downloadYoutubeMuxed(
-          MediaUtils.cleanYoutubeUrl(url),
-          onProgress: _updateProgress,
-        );
-        break;
-      case LinkType.facebook:
-        tempVideoPath = await service.downloadFacebookVideo(url, onProgress: _updateProgress);
-        break;
-      case LinkType.tiktok:
-        tempVideoPath = await service.downloadTiktokVideo(url, onProgress: _updateProgress);
-        break;
-      default:
-        throw Exception("Unsupported link type");
-    }
-
-    if (tempVideoPath == null) {
-      throw Exception('Download failed');
-    }
-
-    //SUCCESS → Store path + Show OPTIONS dialog
-    ref.read(lastVideoPathProvider.notifier).state = tempVideoPath;
-    ref.read(loadingProvider.notifier).state = false;
-    ref.read(downloadProgressProvider.notifier).state = 1.0;
-    
-    // CRITICAL: Show dialog AFTER download (needs BuildContext)
-    if (ref.read(urlProvider) == url) { // Ensure URL didn't change
-      _showPostDownloadDialog();
-    }
-
-  } catch (e) {
-    await _handleError(e, tempVideoPath, tempAudioPath);
+  //Show options dialog AFTER download
+  void _showPostDownloadDialog() {
+    // Using GlobalKey or Navigator.of(context) - needs BuildContext
+    // For now, set flag for HomePage to detect
+    ref.read(postDownloadReadyProvider.notifier).state = true;
   }
-}
-
-//Show options dialog AFTER download
-void _showPostDownloadDialog() {
-  // Using GlobalKey or Navigator.of(context) - needs BuildContext
-  // For now, set flag for HomePage to detect
-  ref.read(postDownloadReadyProvider.notifier).state = true;
-}
-
 
   // --- Main Actions: Save to Telegram ---
 
   Future<void> handleSaveToTelegram() async {
     final token = ref.read(tokenProvider);
     final chatId = ref.read(chatIdProvider);
+    final mode = ref.read(downloadModeProvider);
     final videoPath = ref.read(lastVideoPathProvider);
     final audioPath = ref.read(lastAudioPathProvider);
 
-    if (videoPath == null && audioPath == null) {
-      ref.read(messageProvider.notifier).state = "No downloaded media to send."
-          .tr();
-      return;
-    }
-
     if (token.isEmpty || chatId.isEmpty) {
-      ref.read(messageProvider.notifier).state = "msg_error_chat_id".tr();
+      ref.read(messageProvider.notifier).state = "Configure bot first";
       return;
     }
 
-    // Setup UI
-    ref.read(isGalleryUploadingProvider.notifier).state = false;
     ref.read(transferPhaseProvider.notifier).state = TransferPhase.uploading;
     ref.read(downloadProgressProvider.notifier).state = 0.0;
 
     final service = ref.read(downloadServiceProvider);
-    final isBoth = videoPath != null && audioPath != null;
 
     try {
-      // 1. Upload Video
-      if (videoPath != null) {
-        ref.read(messageProvider.notifier).state = isBoth
-            ? "Uploading video..."
-            : "msg_uploading".tr();
-        final caption = MediaUtils.generateCaption(
-          ref.read(videoCaptionProvider),
-          videoPath,
-          ref.read(saveWithCaptionProvider),
-        );
+      final caption = MediaUtils.generateCaption(
+        ref.read(videoCaptionProvider),
+        videoPath ?? audioPath ?? '',
+        ref.read(saveWithCaptionProvider),
+      );
 
-        await service.saveToBot(
-          videoPath,
-          token,
-          chatId,
-          _updateProgress,
-          caption: caption,
-        );
+      switch (mode) {
+        case DownloadMode.video:
+          if (videoPath != null) {
+            await service.saveToBot(
+              videoPath,
+              token,
+              chatId,
+              _updateProgress,
+              caption: caption,
+            );
+          }
+          break;
+
+        case DownloadMode.audio:
+          if (audioPath != null) {
+            await service.saveAudioToBot(
+              audioPath,
+              token,
+              chatId,
+              _updateProgress,
+              caption: caption,
+            );
+          }
+          break;
+
+        case DownloadMode.both:
+          if (videoPath != null) {
+            await service.saveToBot(
+              videoPath,
+              token,
+              chatId,
+              _updateProgress,
+              caption: caption,
+            );
+          }
+          if (audioPath != null) {
+            await service.saveAudioToBot(
+              audioPath,
+              token,
+              chatId,
+              _updateProgress,
+              caption: caption,
+            );
+          }
+          break;
       }
 
-      // 2. Upload Audio
-      if (audioPath != null) {
-        ref.read(downloadProgressProvider.notifier).state =
-            0.0; // Reset for second file
-        ref.read(messageProvider.notifier).state = isBoth
-            ? "Uploading audio..."
-            : "msg_uploading".tr();
-        final caption = MediaUtils.generateCaption(
-          ref.read(videoCaptionProvider),
-          audioPath,
-          ref.read(saveWithCaptionProvider),
-        );
-
-        await service.saveAudioToBot(
-          audioPath,
-          token,
-          chatId,
-          _updateProgress,
-          caption: caption,
-        );
-      }
-
-      ref.read(downloadProgressProvider.notifier).state = 1.0;
-      ref.read(messageProvider.notifier).state = "msg_successed".tr();
+      ref.read(messageProvider.notifier).state = "Sent to Telegram!";
     } catch (e) {
-      // Pass paths as null because we don't want to delete files on upload failure, just show error
-      await _handleError(e, null, null);
+      ref.read(messageProvider.notifier).state = "Telegram error: $e";
     } finally {
       ref.read(transferPhaseProvider.notifier).state = TransferPhase.idle;
       ref.read(downloadProgressProvider.notifier).state = 0.0;

@@ -14,21 +14,19 @@ class PostDownloadOptionsDialog extends ConsumerStatefulWidget {
     super.key,
     required this.controller,
     required this.videoPath,
-    required WidgetRef ref,
   });
 
   @override
-  ConsumerState<PostDownloadOptionsDialog> createState() =>
-      _PostDownloadOptionsDialogState();
+  ConsumerState<PostDownloadOptionsDialog> createState() => _PostDownloadOptionsDialogState();
 }
 
-class _PostDownloadOptionsDialogState
-    extends ConsumerState<PostDownloadOptionsDialog> {
+class _PostDownloadOptionsDialogState extends ConsumerState<PostDownloadOptionsDialog> {
   DownloadMode selectedMode = DownloadMode.video;
   bool isTelegramDestination = true;
+  bool useCaption = false;
   bool _isProcessing = false;
+  int _saveCount = 0;
 
-  // Glass Theme Colors
   final Color glassBase = Colors.blue.withOpacity(0.1);
   final Color glassBorder = Colors.white.withOpacity(0.2);
   final Color accentBlue = const Color(0xFF42A5F5);
@@ -58,7 +56,6 @@ class _PostDownloadOptionsDialogState
           width: size.width > 500 ? 420 : double.infinity,
           constraints: BoxConstraints(maxHeight: size.height * 0.8),
           decoration: BoxDecoration(
-            // Blue-tinted transparent background
             color: Colors.black.withOpacity(0.6),
             borderRadius: BorderRadius.circular(32),
             border: Border.all(color: glassBorder, width: 1.5),
@@ -93,7 +90,6 @@ class _PostDownloadOptionsDialogState
   Widget _buildHeader(bool isCompact) {
     return Stack(
       children: [
-        // Thumbnail Background with a blue overlay
         Container(
           height: isCompact ? 120 : 160,
           width: double.infinity,
@@ -101,11 +97,9 @@ class _PostDownloadOptionsDialogState
           child: Image.file(
             File(widget.videoPath),
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) =>
-                Icon(Icons.movie, size: 40, color: glassBorder),
+            errorBuilder: (_, __, ___) => Icon(Icons.movie, size: 40, color: glassBorder),
           ),
         ),
-        // Gradient overlay for text readability
         Container(
           height: isCompact ? 120 : 160,
           decoration: BoxDecoration(
@@ -123,9 +117,9 @@ class _PostDownloadOptionsDialogState
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Ready to Save',
-                style: TextStyle(
+              Text(
+                _saveCount > 0 ? 'Saved $_saveCount times' : 'Ready to Save',
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -163,9 +157,42 @@ class _PostDownloadOptionsDialogState
           const SizedBox(height: 10),
           _buildDestinationToggle(),
           const SizedBox(height: 20),
+          
           _label(isTelegramDestination ? 'Selection Mode' : 'Gallery Format'),
           const SizedBox(height: 10),
           _buildFormatGrid(isCompact),
+          const SizedBox(height: 20),
+          
+          _label('Caption'),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: () => setState(() => useCaption = !useCaption),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: glassBorder),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    useCaption ? Icons.check_box : Icons.check_box_outline_blank,
+                    color: accentBlue,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Include caption with media',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -209,9 +236,7 @@ class _PostDownloadOptionsDialogState
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isSelected
-                ? accentBlue.withOpacity(0.2)
-                : Colors.transparent,
+            color: isSelected ? accentBlue.withOpacity(0.2) : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -253,9 +278,7 @@ class _PostDownloadOptionsDialogState
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? accentBlue.withOpacity(0.3)
-                  : Colors.white.withOpacity(0.05),
+              color: isSelected ? accentBlue.withOpacity(0.3) : Colors.white.withOpacity(0.05),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: isSelected ? accentBlue : glassBorder),
             ),
@@ -326,28 +349,34 @@ class _PostDownloadOptionsDialogState
       child: Row(
         children: [
           Expanded(
-            child: TextButton(
+            child: TextButton.icon(
               onPressed: _isProcessing ? null : _handleCancel,
-              child: const Text(
-                'Discard',
-                style: TextStyle(color: Colors.white54),
+              icon: const Icon(Icons.close, color: Colors.white54),
+              label: Text(_saveCount > 0 ? 'Close ($_saveCount)' : 'Discard'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
             flex: 2,
-            child: ElevatedButton(
+            child: ElevatedButton.icon(
               onPressed: _isProcessing ? null : _handleContinue,
+              icon: _isProcessing
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.save, size: 18),
+              label: Text(_isProcessing ? 'Saving...' : 'Save'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: accentBlue,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              child: Text(_isProcessing ? 'Processing...' : 'Proceed'),
             ),
           ),
         ],
@@ -355,7 +384,6 @@ class _PostDownloadOptionsDialogState
     );
   }
 
-  // Helper Methods
   String _getLabel(DownloadMode m) {
     if (m == DownloadMode.video) return 'Video';
     if (m == DownloadMode.audio) return 'Audio Only';
@@ -375,17 +403,37 @@ class _PostDownloadOptionsDialogState
 
   Future<void> _handleContinue() async {
     setState(() => _isProcessing = true);
-    try {
-      ref.read(downloadModeProvider.notifier).state = selectedMode;
-      ref.read(lastVideoPathProvider.notifier).state = widget.videoPath;
 
-      if (selectedMode == DownloadMode.audio && isTelegramDestination) {
-        ref.read(transferPhaseProvider.notifier).state =
-            TransferPhase.extracting;
-        final service = ref.read(downloadServiceProvider);
-        final audioPath = await service.extractMp3FromVideo(widget.videoPath);
-        if (audioPath != null)
-          ref.read(lastAudioPathProvider.notifier).state = audioPath;
+    try {
+      ref.read(saveWithCaptionProvider.notifier).state = useCaption;
+      ref.read(downloadModeProvider.notifier).state = selectedMode;
+
+      switch (selectedMode) {
+        case DownloadMode.video:
+          ref.read(lastVideoPathProvider.notifier).state = widget.videoPath;
+          ref.read(lastAudioPathProvider.notifier).state = null;
+          break;
+
+        case DownloadMode.audio:
+          ref.read(transferPhaseProvider.notifier).state = TransferPhase.extracting;
+          final service = ref.read(downloadServiceProvider);
+          final audioPath = await service.extractMp3FromVideo(widget.videoPath);
+          if (audioPath != null) {
+            await File(widget.videoPath).delete();
+            ref.read(lastVideoPathProvider.notifier).state = null;
+            ref.read(lastAudioPathProvider.notifier).state = audioPath;
+          }
+          break;
+
+        case DownloadMode.both:
+          ref.read(lastVideoPathProvider.notifier).state = widget.videoPath;
+          ref.read(transferPhaseProvider.notifier).state = TransferPhase.extracting;
+          final service = ref.read(downloadServiceProvider);
+          final audioPath = await service.extractMp3FromVideo(widget.videoPath);
+          if (audioPath != null) {
+            ref.read(lastAudioPathProvider.notifier).state = audioPath;
+          }
+          break;
       }
 
       if (isTelegramDestination) {
@@ -393,12 +441,27 @@ class _PostDownloadOptionsDialogState
       } else {
         await widget.controller.handleSaveToGallery();
       }
-      if (mounted) Navigator.pop(context);
+
+      setState(() {
+        _isProcessing = false;
+        _saveCount++;
+        selectedMode = DownloadMode.video;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Saved to ${isTelegramDestination ? "Telegram" : "Gallery"} ✓'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
       }
     } finally {
       if (mounted) setState(() => _isProcessing = false);

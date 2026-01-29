@@ -3,7 +3,10 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_downloader/constant.dart';
-import 'package:video_downloader/controller/home_controller.dart';
+import 'package:video_downloader/controllers/home_controller.dart';
+import 'package:video_downloader/models/enums.dart';
+import 'package:video_downloader/providers/home_providers.dart';
+import 'package:video_downloader/utils/media_utils.dart';
 import 'package:video_downloader/widgets/glass_container.dart';
 
 class HomeLinkCard extends ConsumerWidget {
@@ -20,6 +23,7 @@ class HomeLinkCard extends ConsumerWidget {
     required this.mediaScale,
   });
 
+  // --- Helper: Responsive Scaling ---
   double _responsivePadding(BuildContext context, double base) {
     final scale = mediaScale(context);
     return base * scale;
@@ -35,6 +39,7 @@ class HomeLinkCard extends ConsumerWidget {
     return TextStyle(fontSize: size * scale, fontWeight: weight, color: color);
   }
 
+  // --- Widget: Thumbnail Preview ---
   Widget _buildThumbnailPreview(BuildContext context, WidgetRef ref) {
     final thumbnailUrl = ref.watch(thumbnailUrlProvider);
     final caption = ref.watch(videoCaptionProvider);
@@ -53,6 +58,8 @@ class HomeLinkCard extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(height: _responsivePadding(context, 16.5)),
+        
+        // Image Layer
         if (thumbnailUrl != null && thumbnailUrl.isNotEmpty)
           Center(
             child: ConstrainedBox(
@@ -80,8 +87,7 @@ class HomeLinkCard extends ConsumerWidget {
                           return Container(
                             color: Colors.black26,
                             child: const Center(
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                           );
                         },
@@ -104,11 +110,15 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ),
           ),
+          
+        // Caption Layer
         if (caption != null && caption.isNotEmpty) ...[
           SizedBox(height: _responsivePadding(context, 10)),
           Text(
             caption,
             textAlign: TextAlign.left,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
             style: _responsiveTextStyle(
               context,
               size: 14,
@@ -120,6 +130,7 @@ class HomeLinkCard extends ConsumerWidget {
     );
   }
 
+  // --- Widget: Mode Chip (Video/Audio) ---
   Widget _buildModeChip(
     BuildContext context, {
     required String label,
@@ -154,6 +165,7 @@ class HomeLinkCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Watch state from providers
     final isLoading = ref.watch(loadingProvider);
     final message = ref.watch(messageProvider);
     final progress = ref.watch(downloadProgressProvider);
@@ -166,6 +178,7 @@ class HomeLinkCard extends ConsumerWidget {
     final isDownloading =
         phase == TransferPhase.downloading || phase == TransferPhase.extracting;
 
+    // Use switch expression for clean phase labels
     final String phaseLabel = switch (phase) {
       TransferPhase.downloading => 'Downloading: $percent%',
       TransferPhase.extracting => 'Extracting audio...',
@@ -174,7 +187,6 @@ class HomeLinkCard extends ConsumerWidget {
     };
 
     final scale = mediaScale(context);
-
     final isVideo = mode == DownloadMode.video;
     final isAudio = mode == DownloadMode.audio;
     final isBoth = mode == DownloadMode.both;
@@ -189,6 +201,7 @@ class HomeLinkCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 1. URL Input Field
           TextField(
             controller: urlController,
             enabled: !isLoading,
@@ -228,18 +241,28 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ),
             onChanged: (value) {
-              final cleaned = controller.cleanYoutubeUrl(value);
+              // cleaned logic is now in MediaUtils
+              final cleaned = MediaUtils.cleanYoutubeUrl(value);
+              
               if (cleaned != value) {
-                urlController.text = cleaned;
-                urlController.selection = TextSelection.fromPosition(
-                  TextPosition(offset: cleaned.length),
+                // Update controller but keep cursor at end or logic point
+                urlController.value = TextEditingValue(
+                  text: cleaned,
+                  selection: TextSelection.collapsed(offset: cleaned.length),
                 );
               }
+              
+              // Update state
               ref.read(urlProvider.notifier).state = cleaned;
+              
+              // Trigger thumbnail update in controller
               controller.updateThumbnailForUrl(cleaned);
             },
           ),
+          
           SizedBox(height: _responsivePadding(context, 8)),
+          
+          // 2. Download Mode Selection
           Text(
             "Download as",
             style: _responsiveTextStyle(
@@ -297,7 +320,10 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ],
           ),
+          
           SizedBox(height: _responsivePadding(context, 8)),
+          
+          // 3. Save with Caption Checkbox
           Row(
             children: [
               Checkbox(
@@ -310,6 +336,7 @@ class HomeLinkCard extends ConsumerWidget {
                       },
                 activeColor: kPrimaryColor,
                 checkColor: Colors.white,
+                side: BorderSide(color: Colors.white.withOpacity(0.5)),
               ),
               Expanded(
                 child: Text(
@@ -323,11 +350,17 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ],
           ),
+          
+          // 4. Preview Area
           _buildThumbnailPreview(context, ref),
+          
           SizedBox(height: _responsivePadding(context, 15)),
+          
+          // 5. Progress Bar
           if (isLoading) ...[
             LinearProgressIndicator(
               color: kPrimaryColor,
+              backgroundColor: Colors.white10,
               value: progress > 0 ? progress : null,
               minHeight: 4,
             ),
@@ -346,55 +379,65 @@ class HomeLinkCard extends ConsumerWidget {
               ),
             ),
           ],
+          
           SizedBox(height: _responsivePadding(context, 5.5)),
-          Text(
-            message.isEmpty ? '' : message,
-            textAlign: TextAlign.center,
-            style: _responsiveTextStyle(
-              context,
-              size: 15.5,
-              weight: FontWeight.w500,
-              color: message.startsWith('Error:')
-                  ? Colors.red.shade300
-                  : message.startsWith('Telegram')
-                      ? Colors.green.shade300
-                      : Colors.white,
+          
+          // 6. Status Message
+          if (message.isNotEmpty)
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: _responsiveTextStyle(
+                context,
+                size: 15.5,
+                weight: FontWeight.w500,
+                color: message.startsWith('Error') || message.contains('failed')
+                    ? Colors.red.shade300
+                    : message.startsWith('Telegram') || message.contains('uccess')
+                        ? Colors.green.shade300
+                        : Colors.white,
+              ),
             ),
-          ),
+            
           const SizedBox(height: 12),
-          SizedBox(
-            height: 32 * scale,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10 * scale),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10 * scale),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.28),
-                      width: 1.0,
+          
+          // 7. Cancel Button (Only visible if needed, or disabled style)
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 300),
+            opacity: isDownloading ? 1.0 : 0.5,
+            child: SizedBox(
+              height: 32 * scale,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10 * scale),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10 * scale),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.28),
+                        width: 1.0,
+                      ),
+                      color: Colors.white.withOpacity(
+                        isDownloading ? 0.12 : 0.04,
+                      ),
                     ),
-                    color: Colors.white.withOpacity(
-                      isDownloading ? 0.12 : 0.06,
-                    ),
-                  ),
-                  child: TextButton.icon(
-                    onPressed: isDownloading
-                        ? controller.handleCancel
-                        : null,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 12 * scale),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    icon: Icon(Icons.close, size: 16 * scale),
-                    label: Text(
-                      'CANCEL',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12 * scale,
+                    child: TextButton.icon(
+                      onPressed: isDownloading
+                          ? controller.handleCancel
+                          : null,
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(horizontal: 12 * scale),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      icon: Icon(Icons.close, size: 16 * scale),
+                      label: Text(
+                        'CANCEL',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12 * scale,
+                        ),
                       ),
                     ),
                   ),

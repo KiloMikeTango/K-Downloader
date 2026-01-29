@@ -1,10 +1,10 @@
 import 'dart:ui';
-
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_downloader/constant.dart';
-import 'package:video_downloader/controller/home_controller.dart';
+import 'package:video_downloader/controllers/home_controller.dart';
+import 'package:video_downloader/providers/home_providers.dart';
 import 'package:video_downloader/widgets/glass_container.dart';
 
 class HomeConfigPanel extends ConsumerStatefulWidget {

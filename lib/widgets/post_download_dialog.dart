@@ -1,11 +1,11 @@
 import 'dart:ui';
-
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
+import 'package:video_downloader/models/enums.dart';
+import 'package:video_downloader/providers/home_providers.dart';
 import '../constant.dart';
-import '../controller/home_controller.dart';
+import '../controllers/home_controller.dart';
 import '../widgets/glass_container.dart';
 
 class HomePostDownloadDialog extends ConsumerWidget {

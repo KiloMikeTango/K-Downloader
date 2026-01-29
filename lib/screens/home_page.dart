@@ -1,10 +1,12 @@
 import 'dart:ui';
 
+import 'package:video_downloader/providers/home_providers.dart';
+
 import '../widgets/post_download_dialog.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:video_downloader/controller/home_controller.dart';
+import 'package:video_downloader/controllers/home_controller.dart';
 import 'package:video_downloader/widgets/home_action_button.dart';
 import 'package:video_downloader/widgets/home_background.dart';
 import 'package:video_downloader/widgets/home_config_panel.dart';
@@ -39,7 +41,7 @@ class _HomePageState extends ConsumerState<HomePage>
     _controller = HomeController(ref);
     _controller.loadBotToken();
     _controller.loadSavedChatId(
-      onLoadedToController: (value) => _chatIdController.text = value,
+      onLoaded: (value) => _chatIdController.text = value,
     );
 
     _bgController = AnimationController(
